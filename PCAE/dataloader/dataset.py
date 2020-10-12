@@ -1,0 +1,144 @@
+import open3d as o3d
+import os
+import json
+import numpy as np
+import copy
+import itertools
+import cv2
+import random
+from torchvision import transforms
+from torch.utils.data import Dataset
+from ..config import config
+from ..utils import pointcloud_util, shapenet_taxonomy
+
+
+class PCDataset(Dataset):
+    def __init__(self, split_dataset_type: str):
+        self.split_dataset_type = split_dataset_type
+        self.dataset_loader = DatasetLoader(split_dataset_type)
+
+    def __len__(self):
+        # assert len(self.dataset_loader.split_render_dataset_path) == \
+        #        config.dataset.get_dataset_num(self.split_dataset_type)
+
+        if config.network.mode_flag == 'ae':
+            return len(self.dataset_loader.pc_paths)
+        elif config.network.mode_flag == 'lm':
+            return len(self.dataset_loader.split_render_dataset_path)
+
+    def __getitem__(self, item):
+        if config.network.mode_flag == 'ae':
+            pc, pc_id = self.get_pc(item)
+            target = copy.deepcopy(pc)
+
+            return pc, target, pc_id
+        elif config.network.mode_flag == 'lm':
+            img, img_id = self.get_img(item)
+            pc, pc_id = self.get_pc(item)
+            target = copy.deepcopy(pc)
+
+            return img, pc, target, img_id, pc_id
+
+    def get_pc(self, item):
+        pc_path = None
+        if config.network.mode_flag == 'ae':
+            pc_path = self.dataset_loader.pc_paths[item]
+        elif config.network.mode_flag == 'lm':
+            pc_path = self.dataset_loader.split_render_dataset_path[item][0]
+        # pc = o3d.io.read_point_cloud(pc_path)
+        # assert isinstance(pc, o3d.geometry.PointCloud)
+        pc = np.load(pc_path)  # N*3
+        normalized_pc = pointcloud_util.normalize_pcd(pc)
+        # resampled_pc = pointcloud_util.resample_pcd(normalized_pc, config.dataset.resample_amount)
+        resampled_pc = normalized_pc
+        assert isinstance(resampled_pc, np.ndarray)
+        assert pointcloud_util.get_point_amount(resampled_pc) > 0
+
+        pc_id = '/'.join(pc_path.split('/')[6:8])
+
+        return resampled_pc, pc_id
+
+    def get_img(self, item):
+        img_path = self.dataset_loader.split_render_dataset_path[item][1]
+        img = cv2.imread(img_path, cv2.IMREAD_COLOR)[4:-5, 4:-5, :3]
+
+        img_id = '/'.join(img_path.split('/')[6:10]).split('.')[0]
+
+        # assert isinstance(img, np.ndarray)
+        # assert img.shape[0] > 0
+
+        # transform = transforms.Compose([
+        #     transforms.ToTensor(),
+        #     transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
+        # ])
+
+        # img = transform(img)
+
+        return img, img_id
+
+
+class DatasetLoader:
+    def __init__(self, split_dataset_type: str):
+        assert split_dataset_type in ['train', 'test', 'valid']
+
+        self.split_dataset_type = split_dataset_type
+        self.split_dataset_path = None
+        self.pc_ids = []
+        self.pc_paths = []
+        if config.network.mode_flag == 'lm':
+            self.split_render_dataset_path = []
+
+        self.set_split_dataset_path()
+        self.load_pc_ids()
+        if config.network.mode_flag == 'lm':
+            self.pair_pc_img()
+
+    def set_split_dataset_path(self):
+        if self.split_dataset_type == 'test':
+            self.split_dataset_path = os.path.join(config.dataset.dataset_path,
+                                                   'valid_models.json')
+        else:
+            self.split_dataset_path = os.path.join(config.dataset.dataset_path,
+                                                   str(self.split_dataset_type) + '_models.json')
+
+    def load_pc_ids(self):
+        with open(self.split_dataset_path, 'r') as reader:
+            jf = json.loads(reader.read())
+            try:
+                not_train_keys = [shapenet_taxonomy.shapenet_category_to_id[class_id]
+                                  for class_id in config.dataset.not_train_class]
+                for not_train_key in not_train_keys:
+                    _ = jf.pop(not_train_key)
+            except:
+                pass
+
+            for pc_class in jf.keys():
+                for pc_class_with_id in jf[pc_class]:
+                    self.pc_ids.append(pc_class_with_id)
+
+            if config.dataset.get_dataset_num(self.split_dataset_type) < len(self.pc_ids):
+                random.shuffle(self.pc_ids)
+                self.pc_ids = \
+                    self.pc_ids[:config.dataset.get_dataset_num(self.split_dataset_type)]
+
+            if config.network.mode_flag == 'ae':
+                for pc_id in self.pc_ids:
+                    self.pc_paths.append(os.path.join(config.dataset.dataset_path + 'ShapeNet_pointclouds/', pc_id,
+                                         'pointcloud_{}.npy'.format(config.dataset.resample_amount)))
+
+    def pair_pc_img(self):
+        num_views = 24
+        png_files = [(str(i).zfill(2) + '.png') for i in range(num_views)]
+        for id_with_view in itertools.product(self.pc_ids, png_files):
+            pc_path = os.path.join(config.dataset.dataset_path + 'ShapeNet_pointclouds/',
+                                   id_with_view[0],
+                                   'pointcloud_{}.npy'.format(config.dataset.resample_amount))
+            img_path = os.path.join(config.dataset.dataset_path + 'ShapeNetRendering/',
+                                    id_with_view[0], 'rendering', id_with_view[1])
+            self.split_render_dataset_path.append([pc_path, img_path])
+
+        if config.network.mode_flag == 'lm' and \
+                config.dataset.get_dataset_num(self.split_dataset_type) < len(self.split_render_dataset_path):
+            random.shuffle(self.split_render_dataset_path)
+            self.split_render_dataset_path = \
+                self.split_render_dataset_path[:config.dataset.get_dataset_num(self.split_dataset_type)]
