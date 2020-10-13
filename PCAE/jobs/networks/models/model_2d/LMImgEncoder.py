@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.parallel
 import torch.utils.data
 import torch.nn.functional as F
+from collections import OrderedDict
 
 
 class LMImgEncoder(nn.Module):
@@ -99,10 +100,40 @@ class LMImgEncoder(nn.Module):
         return image_latent
 
 
+class ImgEncoderVAE(nn.Module):
+    def __init__(self, latent_size, z_dim):
+        super().__init__()
+        self.latent_size = latent_size
+        self.z_dim = z_dim
+
+    def encoder(self, x):
+        encoder = LMImgEncoder(self.latent_size)
+        latent = encoder(x)
+        fc_mean = nn.Linear(self.latent_size, self.z_dim)
+        fc_log_var = nn.Linear(self.latent_size, self.z_dim)
+
+        return fc_mean(latent), fc_log_var(latent)  # mean log_var
+
+    def sampling(self, mu, log_var):
+        std = torch.exp(0.5 * log_var)
+        eps = torch.randn_like(std)
+
+        return eps.mul(std).add_(mu)  # return z sample
+
+    def forward(self, x):
+        mu, log_var = self.encoder(x)
+        z = self.sampling(mu, log_var)
+
+        return z
+
+
 if __name__ == '__main__':
     x = torch.randn(24, 3, 128, 128)
     model = LMImgEncoder(latent_size=512)
-    model(x)
+    print(model(x).shape)
+
+    x = torch.randn(24, 3, 128, 128)
+    model = ImgEncoderVAE(latent_size=512, z_dim=128)
     print(model(x).shape)
 
 

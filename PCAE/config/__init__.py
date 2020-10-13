@@ -7,12 +7,14 @@ from pathlib import Path
 from .cuda import CudaConfig
 from .dataset import DatasetConfig
 from .network import NetworkConfig
+from .flow import FlowConfig
 from .wandb import WandbConfig
 
 # Comment below code to enable only cpu usage or parallel gpu usage
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3,4,5,6,7'
 torch.cuda.empty_cache()
 gc.collect()
+
 
 # import random
 # import numpy as np
@@ -57,7 +59,6 @@ class Config:
                                      prior_model="LMNetAE",  # PointNetAE LMNetAE
                                      # checkpoint_path=self.home_dir + 'data/LMNet-data/checkpoint/',
                                      checkpoint_path=self.home_dir + '/data/LMNet-data/checkpoint/DDP',
-                                     # checkpoint_path=self.home_dir + 'data/LMNet-data/checkpoint/' + 'Train_with_Subclass_AE',
                                      prior_epoch='300',
                                      loss_function='cd',  # emd cd emd+cd l1
                                      loss_scale_factor=10000,
@@ -69,7 +70,19 @@ class Config:
                                      learning_rate=5e-5,  # lm
                                      momentum=0.9)
 
-        # self.renderer = #TODO
+        self.flow = FlowConfig(batch_size=15,
+                               ae_dataset_size={'train': 35022, 'test': 8762, 'valid': 8762},
+                               lm_dataset_size={'train': 35022 * 24, 'test': 8762 * 24, 'valid': 8762 * 24},
+                               train_class=['sofa'],
+                               iter=2 * 10e4,
+                               n_flow=32,
+                               n_block=4,
+                               lu_flag=True,
+                               affine_flag=True,
+                               n_bits=5,
+                               lr=1e-4,
+                               temp=0.7,
+                               n_sample=20)
 
         self.wandb = WandbConfig(project_name='PCLM',
                                  run_name='{}'.format(self.network.img_encoder),
