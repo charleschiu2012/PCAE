@@ -80,3 +80,10 @@ class PCLoss:
     @staticmethod
     def f_score(gt_points: torch.Tensor, pred_points: torch.Tensor, radius: float = 0.01, extend=False):
         return f_score(gt_points=gt_points, pred_points=pred_points, radius=radius, extend=extend)
+
+
+def IEVAELoss(prior_z, predict_z, mu, log_var):
+    bce = torch.nn.functional.binary_cross_entropy(prior_z, predict_z, reduction='sum')
+    kld = -0.5 * torch.sum(1 + log_var - mu.pow(2) - log_var.exp())
+
+    return bce + kld

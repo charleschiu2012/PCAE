@@ -114,7 +114,7 @@ class ImgEncoderVAE(nn.Module):
 
         return fc_mean(latent), fc_log_var(latent)  # mean log_var
 
-    def sampling(self, mu, log_var):
+    def sampler(self, mu, log_var):
         std = torch.exp(0.5 * log_var)
         eps = torch.randn_like(std)
 
@@ -122,9 +122,9 @@ class ImgEncoderVAE(nn.Module):
 
     def forward(self, x):
         mu, log_var = self.encoder(x)
-        z = self.sampling(mu, log_var)
+        z = self.sampler(mu, log_var)
 
-        return z
+        return z, mu, log_var
 
 
 if __name__ == '__main__':
