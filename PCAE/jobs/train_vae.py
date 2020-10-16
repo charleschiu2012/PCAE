@@ -54,7 +54,7 @@ class TrainVAESession(Network):
                 with torch.no_grad():
                     latent_pc, _ = self.prior_model(inputs_pc)
                 latent_img, mu, log_var = self.model(inputs_img)
-                loss = IEVAELoss(latent_pc, latent_img, mu, log_var)
+                loss = IEVAELoss(latent_img, latent_pc, mu, log_var)
                 # loss = torch.nn.L1Loss()(latent_img, latent_pc) * config.network.loss_scale_factor
 
                 loss.backward()
@@ -63,9 +63,9 @@ class TrainVAESession(Network):
                 self.log_step_loss(loss=loss.item(), step_idx=idx + 1)
                 self.avg_step_loss = 0
 
-                self.save_model()
-                self.log_epoch_loss()
-                self._epoch += 1
+            self.save_model()
+            self.log_epoch_loss()
+            self._epoch += 1
 
         if config.cuda.dataparallel_mode == 'DistributedDataParallel':
             model_util.cleanup()
@@ -75,7 +75,7 @@ class TrainVAESession(Network):
 
     def set_model(self):
         models = {'LMNetAE': LMNetAE, 'LMImgEncoder': LMImgEncoder, 'ImgEncoderVAE': ImgEncoderVAE}
-        self.model = models[config.network.img_encoder](config.network.latent_size)
+        self.model = ImgEncoderVAE(latent_size=config.network.latent_size, z_dim=config.network.z_dim)
         self.prior_model = models[config.network.prior_model](config.dataset.resample_amount)
         prior_model_path = '%s/%s/epoch%.3d.pth' % (config.network.checkpoint_path,
                                                     config.network.prior_model,
@@ -120,7 +120,7 @@ class TrainVAESession(Network):
             self.avg_epoch_loss = .0
 
 
-def train():
+def train_vae():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-8s %(message)s',
                         datefmt='%Y-%m-%d %H:%M:%S')
     config.show_config()

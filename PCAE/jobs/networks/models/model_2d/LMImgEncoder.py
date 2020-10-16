@@ -105,14 +105,14 @@ class ImgEncoderVAE(nn.Module):
         super().__init__()
         self.latent_size = latent_size
         self.z_dim = z_dim
+        self.encoder = LMImgEncoder(self.latent_size)
+        self.fc_mean = nn.Linear(self.latent_size, self.z_dim)
+        self.fc_log_var = nn.Linear(self.latent_size, self.z_dim)
 
-    def encoder(self, x):
-        encoder = LMImgEncoder(self.latent_size)
-        latent = encoder(x)
-        fc_mean = nn.Linear(self.latent_size, self.z_dim)
-        fc_log_var = nn.Linear(self.latent_size, self.z_dim)
+    def encoding(self, x):
+        latent = self.encoder(x)
 
-        return fc_mean(latent), fc_log_var(latent)  # mean log_var
+        return self.fc_mean(latent), self.fc_log_var(latent)  # mean log_var
 
     def sampler(self, mu, log_var):
         std = torch.exp(0.5 * log_var)
@@ -121,7 +121,7 @@ class ImgEncoderVAE(nn.Module):
         return eps.mul(std).add_(mu)  # return z sample
 
     def forward(self, x):
-        mu, log_var = self.encoder(x)
+        mu, log_var = self.encoding(x)
         z = self.sampler(mu, log_var)
 
         return z, mu, log_var
@@ -130,11 +130,14 @@ class ImgEncoderVAE(nn.Module):
 if __name__ == '__main__':
     x = torch.randn(24, 3, 128, 128)
     model = LMImgEncoder(latent_size=512)
+    # print(model)
     print(model(x).shape)
 
     x = torch.randn(24, 3, 128, 128)
     model = ImgEncoderVAE(latent_size=512, z_dim=128)
-    print(model(x).shape)
-
+    print(model)
+    print(model(x)[0].shape)
+    print(model(x)[1].shape)
+    print(model(x)[2].shape)
 
 

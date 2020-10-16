@@ -9,6 +9,7 @@ class NetworkConfig:
                  loss_scale_factor: int,
                  batch_size: int = 24,
                  latent_size: int = 512,
+                 z_dim: int = 128,
                  epoch_num: int = 30,
                  optimizer: str = 'Adam',
                  learning_rate: float = 1e-3,
@@ -20,8 +21,10 @@ class NetworkConfig:
         self.checkpoint_path = checkpoint_path
         self.prior_epoch = prior_epoch
         self.loss_func = loss_function
+        self.loss_scale_factor  = loss_scale_factor
         self.batch_size = batch_size
         self.latent_size = latent_size
+        self.z_dim = z_dim
         self.epoch_num = epoch_num
         self.optimizer = optimizer
         self.learning_rate = learning_rate

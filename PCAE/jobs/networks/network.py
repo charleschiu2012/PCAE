@@ -79,6 +79,9 @@ class Network:
             self._optimizer = torch.optim.Adam(params=self.model.parameters(),
                                                lr=lr,
                                                betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
+            # self._optimizer = torch.optim.Adam(params=self.model.parameters(),
+            #                                    lr=lr,
+            #                                    betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
         elif self._optimizer == 'SGD':
             self._optimizer = torch.optim.SGD(params=self.model.parameters(),
                                               lr=lr,

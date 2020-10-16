@@ -39,7 +39,7 @@ class Config:
                                is_parallel=True,
                                parallel_gpu_ids=[0, 1, 2, 3, 4, 5, 6, 7],
                                # parallel_gpu_ids=[0, 1],
-                               dataparallel_mode='DistributedDataParallel')  # Dataparallel DistributedDataParallel
+                               dataparallel_mode='Dataparallel')  # Dataparallel DistributedDataParallel
         # OMP_NUM_THREADS=1 python -m torch.distributed.launch --nproc_per_node=8 main.py
 
         self.dataset = DatasetConfig(dataset_name='LMNet_ShapeNet_PC',
@@ -54,8 +54,8 @@ class Config:
                                      )
         # LMNetAE_dataset_size' = {'train': 35022, 'test': 8762, 'valid': 8762}
 
-        self.network = NetworkConfig(mode_flag='lm',  # ae, lm
-                                     img_encoder="LMImgEncoder",  # LMImgEncoder
+        self.network = NetworkConfig(mode_flag='lm',  # ae, lm, vae
+                                     img_encoder="ImgEncoderVAE",  # LMImgEncoder ImgEncoderVAE
                                      prior_model="LMNetAE",  # PointNetAE LMNetAE
                                      # checkpoint_path=self.home_dir + 'data/LMNet-data/checkpoint/',
                                      checkpoint_path=self.home_dir + '/data/LMNet-data/checkpoint/DDP',
@@ -64,6 +64,7 @@ class Config:
                                      loss_scale_factor=10000,
                                      batch_size=32,  # ae:32 lm:24
                                      latent_size=512,
+                                     z_dim=512,
                                      epoch_num=300,
                                      optimizer='Adam',
                                      # learning_rate=5e-4,  # ae
@@ -84,7 +85,7 @@ class Config:
                                temp=0.7,
                                n_sample=20)
 
-        self.wandb = WandbConfig(project_name='PCLM',
+        self.wandb = WandbConfig(project_name='PCVAE',
                                  run_name='{}'.format(self.network.img_encoder),
                                  dir_path=self.home_dir + '/PCAE-TWCC/',
                                  machine_id="TWCC",
