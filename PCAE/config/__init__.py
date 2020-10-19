@@ -81,7 +81,7 @@ class Config:
                                lu_flag=True,
                                affine_flag=True,
                                n_bits=5,
-                               lr=1e-4,
+                               lr=1e-4,                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             
                                temp=0.7,
                                n_sample=20)
 
