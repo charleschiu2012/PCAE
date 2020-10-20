@@ -92,7 +92,8 @@ class FlowLoader:
         #  self.lm_latent_paths shape = [dim_0 = pc_id]
         for pc_id in self.pc_ids:
             self.ae_latent_paths.append(os.path.join(config.network.checkpoint_path +
-                                                     '/train_ae_latent/', pc_id, 'latent.npy'))
+                                                     '/{}_ae_latent/'.format(self.split_dataset_type),
+                                                     pc_id, 'latent.npy'))
 
     def load_lm_latents(self):
         #  self.ae_latent_paths shape = [dim_0 = pc_id, dim_1= num_views]
@@ -101,5 +102,5 @@ class FlowLoader:
             self.ae_latent_paths.append(id_level)
             for idx in range(24):
                 self.ae_latent_paths[-1].append(os.path.join(config.network.checkpoint_path +
-                                                             '/train_lm_latent/', pc_id, str(idx).zfill(2),
-                                                             'latent.npy'))
+                                                             '/{}_lm_latent/'.format(self.split_dataset_type),
+                                                             pc_id, str(idx).zfill(2), 'latent.npy'))
