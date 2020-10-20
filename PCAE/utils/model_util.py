@@ -42,6 +42,9 @@ def get_pretrained_model_path(pretrained_epoch):
         elif config.network.mode_flag == 'lm':
             pretrained_model_paths = glob('%s/%s/epoch*' % (config.network.checkpoint_path,
                                                             config.network.img_encoder))
+        elif config.network.mode_flag == 'nice':
+            pretrained_model_paths = glob('%s/%s/epoch*' % (config.network.checkpoint_path,
+                                                            'nice'))
         model_path = sorted(pretrained_model_paths)[-1] if pretrained_model_paths else None
     else:
         if config.network.mode_flag == 'ae':
@@ -51,6 +54,10 @@ def get_pretrained_model_path(pretrained_epoch):
         elif config.network.mode_flag == 'lm':
             model_path = '%s/%s/epoch%.3d.pth' % (config.network.checkpoint_path,
                                                   config.network.img_encoder,
+                                                  int(pretrained_epoch))
+        elif config.network.mode_flag == 'nice':
+            model_path = '%s/%s/epoch%.3d.pth' % (config.network.checkpoint_path,
+                                                  'NICE',
                                                   int(pretrained_epoch))
 
     return model_path
@@ -88,6 +95,8 @@ def test_trained_model(model, test_epoch):
             trained_model_paths = glob('%s/%s/epoch*' % (config.network.checkpoint_path, config.network.prior_model))
         elif config.network.mode_flag == 'lm':
             trained_model_paths = glob('%s/%s/epoch*' % (config.network.checkpoint_path, config.network.img_encoder))
+        elif config.network.mode_flag == 'nice':
+            trained_model_paths = glob('%s/%s/epoch*' % (config.network.checkpoint_path, 'NICE'))
         model_path = sorted(trained_model_paths)[-1] if trained_model_paths else None
     else:
         if config.network.mode_flag == 'ae':
@@ -96,6 +105,9 @@ def test_trained_model(model, test_epoch):
         elif config.network.mode_flag == 'lm':
             model_path = '%s/%s/epoch%.3d.pth' % (config.network.checkpoint_path,
                                                   config.network.img_encoder, int(test_epoch))
+        elif config.network.mode_flag == 'nice':
+            model_path = '%s/%s/epoch%.3d.pth' % (config.network.checkpoint_path,
+                                                  'NICE', int(test_epoch))
 
     _ = get_epoch_num(model_path)
 
@@ -125,6 +137,8 @@ def get_models_path(checkpoint_path):
         return sorted(glob('%s/%s/epoch*' % (checkpoint_path, config.network.prior_model)))
     elif config.network.mode_flag == 'lm':
         return sorted(glob('%s/%s/epoch*' % (checkpoint_path, config.network.img_encoder)))
+    elif config.network.mode_flag == 'nice':
+        return sorted(glob('%s/%s/epoch*' % (checkpoint_path, 'NICE')))
 
 
 def load_partial_pretrained_model(pretrained_model, epoch_num, apply_model, which_part):

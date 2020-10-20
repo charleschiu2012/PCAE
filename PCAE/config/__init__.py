@@ -96,7 +96,7 @@ class Config:
                                mask_config=1.)
 
         self.wandb = WandbConfig(project_name='PC_NICE',
-                                 run_name='{}'.format(self.network.img_encoder),
+                                 run_name='{}'.format('NICE'),
                                  dir_path=self.home_dir + '/PCAE-TWCC/',
                                  machine_id="TWCC",
                                  step_loss_freq=100,
