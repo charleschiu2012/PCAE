@@ -2,7 +2,7 @@
 import wandb
 import numpy as np
 from ..config import config
-from ..dataloader import PCDataset
+from ..dataloader import PCDataset, FlowDataset
 
 
 def launch_multiple_runs():
@@ -40,6 +40,17 @@ class WandbVisualizer:
                            'loss_fn': config.network.loss_func,
                            'batch_size': config.network.batch_size,
                            'epoch_num': config.network.epoch_num,
+                           'learning_rate': config.network.learning_rate,
+                           'momentum': config.network.momentum}
+        elif config.network.mode_flag == 'nice':
+            self.config = {'dataset': config.dataset.dataset_name,
+                           'job_type': self.job_type,
+                           'split_dataset_size': FlowDataset(self.job_type).__len__(),
+                           'machine': config.wandb.machine_id,
+                           'model': 'NICE',
+                           'loss_fn': 'NICE_loss',
+                           'batch_size': config.nice.batch_size,
+                           'epoch_num': config.nice.num_iters,
                            'learning_rate': config.network.learning_rate,
                            'momentum': config.network.momentum}
 

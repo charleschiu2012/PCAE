@@ -9,6 +9,7 @@ from .dataset import DatasetConfig
 from .network import NetworkConfig
 from .flow import FlowConfig
 from .wandb import WandbConfig
+from .nice import NICEConfig
 
 # Comment below code to enable only cpu usage or parallel gpu usage
 os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3,4,5,6,7'
@@ -45,16 +46,16 @@ class Config:
         self.dataset = DatasetConfig(dataset_name='LMNet_ShapeNet_PC',
                                      dataset_path=self.home_dir + '/data/LMNet-data/',
                                      # sudo mount tmpfs /eva_data/hdd2/charles/Ramdisk/ -t tmpfs -o size=70G
-                                     dataset_size={'train': 35022 * 24, 'test': 8762 * 24, 'valid': 8762 * 24},
+                                     # dataset_size={'train': 35022 * 24, 'test': 8762 * 24, 'valid': 8762 * 24},
                                      # dataset_size={'train': 50, 'test': 50, 'valid': 50},
                                      # LM Dataset
-                                     # dataset_size={'train': 35022, 'test': 8762, 'valid': 8762},  # AE Dataset
+                                     dataset_size={'train': 35022, 'test': 8762, 'valid': 8762},  # AE Dataset
                                      resample_amount=2048,
                                      # not_train_class=['airplane', 'bench', 'cabinet']
                                      )
         # LMNetAE_dataset_size' = {'train': 35022, 'test': 8762, 'valid': 8762}
 
-        self.network = NetworkConfig(mode_flag='lm',  # ae, lm, vae
+        self.network = NetworkConfig(mode_flag='nice',  # ae, lm, vae
                                      img_encoder="ImgEncoderVAE",  # LMImgEncoder ImgEncoderVAE
                                      prior_model="LMNetAE",  # PointNetAE LMNetAE
                                      # checkpoint_path=self.home_dir + 'data/LMNet-data/checkpoint/',
@@ -68,28 +69,37 @@ class Config:
                                      epoch_num=300,
                                      optimizer='Adam',
                                      # learning_rate=5e-4,  # ae
-                                     learning_rate=5e-5,  # lm
+                                     # learning_rate=5e-5,  # lm
+                                     learning_rate=1e-3,  # nice
                                      momentum=0.9)
 
-        self.flow = FlowConfig(batch_size=15,
-                               ae_dataset_size={'train': 35022, 'test': 8762, 'valid': 8762},
-                               lm_dataset_size={'train': 35022 * 24, 'test': 8762 * 24, 'valid': 8762 * 24},
-                               train_class=['sofa'],
-                               iter=2 * 10e4,
-                               n_flow=32,
-                               n_block=4,
-                               lu_flag=True,
-                               affine_flag=True,
-                               n_bits=5,
-                               lr=1e-4,                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             
-                               temp=0.7,
-                               n_sample=20)
+        # self.flow = FlowConfig(batch_size=15,
+        #                        ae_dataset_size={'train': 35022, 'test': 8762, 'valid': 8762},
+        #                        lm_dataset_size={'train': 35022 * 24, 'test': 8762 * 24, 'valid': 8762 * 24},
+        #                        train_class=['sofa'],
+        #                        iter=2 * 10e4,
+        #                        n_flow=32,
+        #                        n_block=4,
+        #                        lu_flag=True,
+        #                        affine_flag=True,
+        #                        n_bits=5,
+        #                        lr=1e-4,
+        #                        temp=0.7,
+        #                        n_sample=20)
 
-        self.wandb = WandbConfig(project_name='PCVAE',
+        self.nice = NICEConfig(batch_size=200,
+                               latent='normal',
+                               mid_dim=128,
+                               num_iters=25000,
+                               sample_size=64,
+                               coupling=4,
+                               mask_config=1.)
+
+        self.wandb = WandbConfig(project_name='PC_NICE',
                                  run_name='{}'.format(self.network.img_encoder),
                                  dir_path=self.home_dir + '/PCAE-TWCC/',
                                  machine_id="TWCC",
-                                 step_loss_freq=500,
+                                 step_loss_freq=100,
                                  visual_flag=True)
 
     def show_config(self):

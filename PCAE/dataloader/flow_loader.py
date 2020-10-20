@@ -20,10 +20,11 @@ class FlowDataset(Dataset):
 
     def __getitem__(self, item):
         ae_latent, ae_id = self.get_ae_latent(item)
-        lm_latent, lm_id = self.get_lm_latent(item)
+        # lm_latent, lm_id = self.get_lm_latent(item)
 
-        assert ae_id == lm_id
-        return ae_latent, lm_latent, ae_id
+        # assert ae_id == lm_id
+        # return ae_latent, lm_latent, ae_id
+        return ae_latent, ae_id
 
     def get_ae_latent(self, item):
         ae_latent_path = self.dataset_loader.ae_latent_paths[item]
@@ -55,7 +56,7 @@ class FlowLoader:
         self.set_split_dataset_path()
         self.load_pc_ids()
         self.load_ae_latents()
-        self.load_lm_latents()
+        # self.load_lm_latents()
 
     def set_split_dataset_path(self):
         if self.split_dataset_type == 'test':
@@ -69,24 +70,29 @@ class FlowLoader:
         with open(self.split_dataset_path, 'r') as reader:
             jf = json.loads(reader.read())
 
-            train_keys = [shapenet_taxonomy.shapenet_category_to_id[class_id]
-                          for class_id in config.flow.train_class]
+            # train_keys = [shapenet_taxonomy.shapenet_category_to_id[class_id]
+            #               for class_id in config.flow.train_class]
+            #
+            # for pc_class in jf.keys():
+            #     for train_key in train_keys:
+            #         if pc_class == train_key:
+            #             for pc_class_with_id in jf[pc_class]:
+            #                 self.pc_ids.append(pc_class_with_id)
 
             for pc_class in jf.keys():
-                for train_key in train_keys:
-                    if pc_class == train_key:
-                        for pc_class_with_id in jf[pc_class]:
-                            self.pc_ids.append(pc_class_with_id)
+                for pc_class_with_id in jf[pc_class]:
+                    self.pc_ids.append(pc_class_with_id)
 
             if config.dataset.get_dataset_num(self.split_dataset_type) < len(self.pc_ids):
                 random.shuffle(self.pc_ids)
-                self.pc_ids = self.pc_ids[:config.flow.ae_dataset_size[self.split_dataset_type]]
+                # self.pc_ids = self.pc_ids[:config.flow.ae_dataset_size[self.split_dataset_type]]
+                self.pc_ids = self.pc_ids[:config.dataset.dataset_size[self.split_dataset_type]]
 
     def load_ae_latents(self):
         #  self.lm_latent_paths shape = [dim_0 = pc_id]
         for pc_id in self.pc_ids:
             self.ae_latent_paths.append(os.path.join(config.network.checkpoint_path +
-                                                     'train_ae_latent/', pc_id, 'latent.npy'))
+                                                     '/train_ae_latent/', pc_id, 'latent.npy'))
 
     def load_lm_latents(self):
         #  self.ae_latent_paths shape = [dim_0 = pc_id, dim_1= num_views]
@@ -95,4 +101,5 @@ class FlowLoader:
             self.ae_latent_paths.append(id_level)
             for idx in range(24):
                 self.ae_latent_paths[-1].append(os.path.join(config.network.checkpoint_path +
-                                                         'train_lm_latent/', pc_id, str(idx).zfill(2), 'latent.npy'))
+                                                             '/train_lm_latent/', pc_id, str(idx).zfill(2),
+                                                             'latent.npy'))

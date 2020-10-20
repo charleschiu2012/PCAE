@@ -1,6 +1,7 @@
 import os
 import torch
 import math
+import numpy as np
 from ...config import config
 from ...dataloader import PCDataset
 
@@ -23,6 +24,8 @@ class Network:
             model_name = str(config.network.prior_model)
         elif config.network.mode_flag == 'lm':
             model_name = str(config.network.img_encoder)
+        elif config.network.mode_flag == 'nice':
+            model_name = 'NICE'
         os.makedirs(checkpoint_path + '/' + model_name, exist_ok=True)
         model_path = '%s/%s/epoch%.3d.pth' % (checkpoint_path,
                                               model_name, int(self._epoch))
@@ -47,6 +50,11 @@ class Network:
 
                 img_id, pc_id = data[3], data[4]
                 yield inputs_img, inputs_pc, targets, img_id, pc_id
+            elif config.network.mode_flag == 'nice':
+                inputs_latent, latent_ids = torch.from_numpy(np.array(data[0])).to(device).float(), \
+                                            data[1]
+
+                yield inputs_latent, latent_ids
 
     def steps_in_an_epoch(self):
         if PCDataset(self._data_type).__len__() <= config.network.batch_size:

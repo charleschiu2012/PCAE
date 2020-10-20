@@ -525,7 +525,7 @@ class ChannelwiseCoupling(nn.Module):
 
 
 class RealNVP(nn.Module):
-    def __init__(self, datainfo, prior, hps):
+    def __init__(self, prior, hps):
         """Initializes a RealNVP.
         Args:
             datainfo: information of dataset to be modeled.
@@ -533,67 +533,56 @@ class RealNVP(nn.Module):
             hps: the set of hyperparameters.
         """
         super(RealNVP, self).__init__()
-        self.datainfo = datainfo
         self.prior = prior
         self.hps = hps
 
-        chan = datainfo.channel
-        size = datainfo.size
+        chan = 3
+        size = 64
         dim = hps.base_dim
 
-        if datainfo.name == 'cifar10':
-            # architecture for CIFAR-10 (down to 16 x 16 x C)
-            # SCALE 1: 3 x 32 x 32
-            self.s1_ckbd = self.checkerboard_combo(chan, dim, size, hps)
-            self.s1_chan = self.channelwise_combo(chan * 4, dim, hps)
-            self.order_matrix_1 = self.order_matrix(chan).cuda()
-            chan *= 2
-            size //= 2
+        # dataset TODO
+        self.datainfo_name = 'LMNet-data'
+        self.datainfo_channel = 512
+        self.datainfo_size = 1
 
-            # SCALE 2: 6 x 16 x 16
-            self.s2_ckbd = self.checkerboard_combo(chan, dim, size, hps, final=True)
+        # architecture for ImageNet and CelebA (down to 4 x 4 x C)
+        # SCALE 1: 3 x 32(64) x 32(64)
+        self.s1_ckbd = self.checkerboard_combo(chan, dim, size, hps)
+        self.s1_chan = self.channelwise_combo(chan * 4, dim * 2, hps)
+        self.order_matrix_1 = self.order_matrix(chan).cuda()
+        chan *= 2
+        size //= 2
+        dim *= 2
 
-        else:  # NOTE: can construct with loop (for future edit)
-            # architecture for ImageNet and CelebA (down to 4 x 4 x C)
-            # SCALE 1: 3 x 32(64) x 32(64)
-            self.s1_ckbd = self.checkerboard_combo(chan, dim, size, hps)
-            self.s1_chan = self.channelwise_combo(chan * 4, dim * 2, hps)
-            self.order_matrix_1 = self.order_matrix(chan).cuda()
-            chan *= 2
-            size //= 2
-            dim *= 2
+        # SCALE 2: 6 x 16(32) x 16(32)
+        self.s2_ckbd = self.checkerboard_combo(chan, dim, size, hps)
+        self.s2_chan = self.channelwise_combo(chan * 4, dim * 2, hps)
+        self.order_matrix_2 = self.order_matrix(chan).cuda()
+        chan *= 2
+        size //= 2
+        dim *= 2
 
-            # SCALE 2: 6 x 16(32) x 16(32)
-            self.s2_ckbd = self.checkerboard_combo(chan, dim, size, hps)
-            self.s2_chan = self.channelwise_combo(chan * 4, dim * 2, hps)
-            self.order_matrix_2 = self.order_matrix(chan).cuda()
-            chan *= 2
-            size //= 2
-            dim *= 2
+        # SCALE 3: 12 x 8(16) x 8(16)
+        self.s3_ckbd = self.checkerboard_combo(chan, dim, size, hps)
+        self.s3_chan = self.channelwise_combo(chan * 4, dim * 2, hps)
+        self.order_matrix_3 = self.order_matrix(chan).cuda()
+        chan *= 2
+        size //= 2
+        dim *= 2
 
-            # SCALE 3: 12 x 8(16) x 8(16)
-            self.s3_ckbd = self.checkerboard_combo(chan, dim, size, hps)
-            self.s3_chan = self.channelwise_combo(chan * 4, dim * 2, hps)
-            self.order_matrix_3 = self.order_matrix(chan).cuda()
-            chan *= 2
-            size //= 2
-            dim *= 2
+        # SCALE 4: 24 x 4 x 4
+        self.s4_ckbd = self.checkerboard_combo(chan, dim, size, hps, final=True)
 
-            if datainfo.name == 'imnet32':
-                # SCALE 4: 24 x 4 x 4
-                self.s4_ckbd = self.checkerboard_combo(chan, dim, size, hps, final=True)
+        # SCALE 4: 24 x 8 x 8
+        self.s4_ckbd = self.checkerboard_combo(chan, dim, size, hps)
+        self.s4_chan = self.channelwise_combo(chan * 4, dim * 2, hps)
+        self.order_matrix_4 = self.order_matrix(chan).cuda()
+        chan *= 2
+        size //= 2
+        dim *= 2
 
-            elif datainfo.name in ['imnet64', 'celeba']:
-                # SCALE 4: 24 x 8 x 8
-                self.s4_ckbd = self.checkerboard_combo(chan, dim, size, hps)
-                self.s4_chan = self.channelwise_combo(chan * 4, dim * 2, hps)
-                self.order_matrix_4 = self.order_matrix(chan).cuda()
-                chan *= 2
-                size //= 2
-                dim *= 2
-
-                # SCALE 5: 48 x 4 x 4
-                self.s5_ckbd = self.checkerboard_combo(chan, dim, size, hps, final=True)
+        # SCALE 5: 48 x 4 x 4
+        self.s5_ckbd = self.checkerboard_combo(chan, dim, size, hps, final=True)
 
     def checkerboard_combo(self, in_out_dim, mid_dim, size, hps, final=False):
         """Construct a combination of checkerboard coupling layers.
@@ -724,47 +713,43 @@ class RealNVP(nn.Module):
             transformed tensor in data space X.
         """
         x, x_off_1 = self.factor_out(z, self.order_matrix_1)
+        x, x_off_2 = self.factor_out(x, self.order_matrix_2)
+        x, x_off_3 = self.factor_out(x, self.order_matrix_3)
+        x, x_off_4 = self.factor_out(x, self.order_matrix_4)
 
-        if self.datainfo.name in ['imnet32', 'imnet64', 'celeba']:
-            x, x_off_2 = self.factor_out(x, self.order_matrix_2)
-            x, x_off_3 = self.factor_out(x, self.order_matrix_3)
+        # SCALE 5: 4 x 4
+        for i in reversed(range(len(self.s5_ckbd))):
+            x, _ = self.s5_ckbd[i](x, reverse=True)
 
-            if self.datainfo.name in ['imnet64', 'celeba']:
-                x, x_off_4 = self.factor_out(x, self.order_matrix_4)
+        x = self.restore(x, x_off_4, self.order_matrix_4)
 
-                # SCALE 5: 4 x 4
-                for i in reversed(range(len(self.s5_ckbd))):
-                    x, _ = self.s5_ckbd[i](x, reverse=True)
+        # SCALE 4: 8 x 8
+        x = self.squeeze(x)
+        for i in reversed(range(len(self.s4_chan))):
+            x, _ = self.s4_chan[i](x, reverse=True)
+        x = self.undo_squeeze(x)
 
-                x = self.restore(x, x_off_4, self.order_matrix_4)
+        for i in reversed(range(len(self.s4_ckbd))):
+            x, _ = self.s4_ckbd[i](x, reverse=True)
 
-                # SCALE 4: 8 x 8
-                x = self.squeeze(x)
-                for i in reversed(range(len(self.s4_chan))):
-                    x, _ = self.s4_chan[i](x, reverse=True)
-                x = self.undo_squeeze(x)
+        x = self.restore(x, x_off_3, self.order_matrix_3)
 
-            for i in reversed(range(len(self.s4_ckbd))):
-                x, _ = self.s4_ckbd[i](x, reverse=True)
+        # SCALE 3: 8(16) x 8(16)
+        x = self.squeeze(x)
+        for i in reversed(range(len(self.s3_chan))):
+            x, _ = self.s3_chan[i](x, reverse=True)
+        x = self.undo_squeeze(x)
 
-            x = self.restore(x, x_off_3, self.order_matrix_3)
+        for i in reversed(range(len(self.s3_ckbd))):
+            x, _ = self.s3_ckbd[i](x, reverse=True)
 
-            # SCALE 3: 8(16) x 8(16)
-            x = self.squeeze(x)
-            for i in reversed(range(len(self.s3_chan))):
-                x, _ = self.s3_chan[i](x, reverse=True)
-            x = self.undo_squeeze(x)
+        x = self.restore(x, x_off_2, self.order_matrix_2)
 
-            for i in reversed(range(len(self.s3_ckbd))):
-                x, _ = self.s3_ckbd[i](x, reverse=True)
-
-            x = self.restore(x, x_off_2, self.order_matrix_2)
-
-            # SCALE 2: 16(32) x 16(32)
-            x = self.squeeze(x)
-            for i in reversed(range(len(self.s2_chan))):
-                x, _ = self.s2_chan[i](x, reverse=True)
-            x = self.undo_squeeze(x)
+        # SCALE 2: 16(32) x 16(32)
+        x = self.squeeze(x)
+        for i in reversed(range(len(self.s2_chan))):
+            x, _ = self.s2_chan[i](x, reverse=True)
+        x = self.undo_squeeze(x)
 
         for i in reversed(range(len(self.s2_ckbd))):
             x, _ = self.s2_ckbd[i](x, reverse=True)
@@ -810,57 +795,55 @@ class RealNVP(nn.Module):
             z, inc = self.s2_ckbd[i](z)
             log_diag_J = log_diag_J + inc
 
-        if self.datainfo.name in ['imnet32', 'imnet64', 'celeba']:
-            z, log_diag_J = self.squeeze(z), self.squeeze(log_diag_J)
-            for i in range(len(self.s2_chan)):
-                z, inc = self.s2_chan[i](z)
-                log_diag_J = log_diag_J + inc
-            z, log_diag_J = self.undo_squeeze(z), self.undo_squeeze(log_diag_J)
+        z, log_diag_J = self.squeeze(z), self.squeeze(log_diag_J)
+        for i in range(len(self.s2_chan)):
+            z, inc = self.s2_chan[i](z)
+            log_diag_J = log_diag_J + inc
+        z, log_diag_J = self.undo_squeeze(z), self.undo_squeeze(log_diag_J)
 
-            z, z_off_2 = self.factor_out(z, self.order_matrix_2)
-            log_diag_J, log_diag_J_off_2 = self.factor_out(log_diag_J, self.order_matrix_2)
+        z, z_off_2 = self.factor_out(z, self.order_matrix_2)
+        log_diag_J, log_diag_J_off_2 = self.factor_out(log_diag_J, self.order_matrix_2)
 
-            # SCALE 3: 8(16) x 8(16)
-            for i in range(len(self.s3_ckbd)):
-                z, inc = self.s3_ckbd[i](z)
-                log_diag_J = log_diag_J + inc
+        # SCALE 3: 8(16) x 8(16)
+        for i in range(len(self.s3_ckbd)):
+            z, inc = self.s3_ckbd[i](z)
+            log_diag_J = log_diag_J + inc
 
-            z, log_diag_J = self.squeeze(z), self.squeeze(log_diag_J)
-            for i in range(len(self.s3_chan)):
-                z, inc = self.s3_chan[i](z)
-                log_diag_J = log_diag_J + inc
-            z, log_diag_J = self.undo_squeeze(z), self.undo_squeeze(log_diag_J)
+        z, log_diag_J = self.squeeze(z), self.squeeze(log_diag_J)
+        for i in range(len(self.s3_chan)):
+            z, inc = self.s3_chan[i](z)
+            log_diag_J = log_diag_J + inc
+        z, log_diag_J = self.undo_squeeze(z), self.undo_squeeze(log_diag_J)
 
-            z, z_off_3 = self.factor_out(z, self.order_matrix_3)
-            log_diag_J, log_diag_J_off_3 = self.factor_out(log_diag_J, self.order_matrix_3)
+        z, z_off_3 = self.factor_out(z, self.order_matrix_3)
+        log_diag_J, log_diag_J_off_3 = self.factor_out(log_diag_J, self.order_matrix_3)
 
-            # SCALE 4: 4(8) x 4(8)
-            for i in range(len(self.s4_ckbd)):
-                z, inc = self.s4_ckbd[i](z)
-                log_diag_J = log_diag_J + inc
+        # SCALE 4: 4(8) x 4(8)
+        for i in range(len(self.s4_ckbd)):
+            z, inc = self.s4_ckbd[i](z)
+            log_diag_J = log_diag_J + inc
 
-            if self.datainfo.name in ['imnet64', 'celeba']:
-                z, log_diag_J = self.squeeze(z), self.squeeze(log_diag_J)
-                for i in range(len(self.s4_chan)):
-                    z, inc = self.s4_chan[i](z)
-                    log_diag_J = log_diag_J + inc
-                z, log_diag_J = self.undo_squeeze(z), self.undo_squeeze(log_diag_J)
+        z, log_diag_J = self.squeeze(z), self.squeeze(log_diag_J)
+        for i in range(len(self.s4_chan)):
+            z, inc = self.s4_chan[i](z)
+            log_diag_J = log_diag_J + inc
+        z, log_diag_J = self.undo_squeeze(z), self.undo_squeeze(log_diag_J)
 
-                z, z_off_4 = self.factor_out(z, self.order_matrix_4)
-                log_diag_J, log_diag_J_off_4 = self.factor_out(log_diag_J, self.order_matrix_4)
+        z, z_off_4 = self.factor_out(z, self.order_matrix_4)
+        log_diag_J, log_diag_J_off_4 = self.factor_out(log_diag_J, self.order_matrix_4)
 
-                # SCALE 5: 4 x 4
-                for i in range(len(self.s5_ckbd)):
-                    z, inc = self.s5_ckbd[i](z)
-                    log_diag_J = log_diag_J + inc
+        # SCALE 5: 4 x 4
+        for i in range(len(self.s5_ckbd)):
+            z, inc = self.s5_ckbd[i](z)
+            log_diag_J = log_diag_J + inc
 
-                z = self.restore(z, z_off_4, self.order_matrix_4)
-                log_diag_J = self.restore(log_diag_J, log_diag_J_off_4, self.order_matrix_4)
+        z = self.restore(z, z_off_4, self.order_matrix_4)
+        log_diag_J = self.restore(log_diag_J, log_diag_J_off_4, self.order_matrix_4)
 
-            z = self.restore(z, z_off_3, self.order_matrix_3)
-            z = self.restore(z, z_off_2, self.order_matrix_2)
-            log_diag_J = self.restore(log_diag_J, log_diag_J_off_3, self.order_matrix_3)
-            log_diag_J = self.restore(log_diag_J, log_diag_J_off_2, self.order_matrix_2)
+        z = self.restore(z, z_off_3, self.order_matrix_3)
+        z = self.restore(z, z_off_2, self.order_matrix_2)
+        log_diag_J = self.restore(log_diag_J, log_diag_J_off_3, self.order_matrix_3)
+        log_diag_J = self.restore(log_diag_J, log_diag_J_off_2, self.order_matrix_2)
 
         z = self.restore(z, z_off_1, self.order_matrix_1)
         log_diag_J = self.restore(log_diag_J, log_diag_J_off_1, self.order_matrix_1)
@@ -887,8 +870,8 @@ class RealNVP(nn.Module):
         Returns:
             samples from the data space X.
         """
-        C = self.datainfo.channel
-        H = W = self.datainfo.size
+        C = self.datainfo_channel
+        H = W = self.datainfo_size
         z = self.prior.sample((size, C, H, W))
         return self.g(z)
 
@@ -909,3 +892,101 @@ class RealNVP(nn.Module):
                 else:
                     weight_scale = weight_scale + torch.pow(param, 2).sum()
         return self.log_prob(x), weight_scale
+
+
+def logit_transform(x, constraint=0.9, reverse=False):
+    '''Transforms data from [0, 1] into unbounded space.
+    Restricts data into [0.05, 0.95].
+    Calculates logit(alpha+(1-alpha)*x).
+    Args:
+        x: input tensor.
+        constraint: data constraint before logit.
+        reverse: True if transform data back to [0, 1].
+    Returns:
+        transformed tensor and log-determinant of Jacobian from the transform.
+        (if reverse=True, no log-determinant is returned.)
+    '''
+    if reverse:
+        x = 1. / (torch.exp(-x) + 1.)  # [0.05, 0.95]
+        x *= 2.  # [0.1, 1.9]
+        x -= 1.  # [-0.9, 0.9]
+        x /= constraint  # [-1, 1]
+        x += 1.  # [0, 2]
+        x /= 2.  # [0, 1]
+        return x, 0
+    else:
+        [B, C, H, W] = list(x.size())
+
+        # dequantization
+        noise = distributions.Uniform(0., 1.).sample((B, C, H, W))
+        x = (x * 255. + noise) / 256.
+
+        # restrict data
+        x *= 2.  # [0, 2]
+        x -= 1.  # [-1, 1]
+        x *= constraint  # [-0.9, 0.9]
+        x += 1.  # [0.1, 1.9]
+        x /= 2.  # [0.05, 0.95]
+
+        # logit data
+        logit_x = torch.log(x) - torch.log(1. - x)
+
+        # log-determinant of Jacobian from the transform
+        pre_logit_scale = torch.tensor(
+            np.log(constraint) - np.log(1. - constraint))
+        log_diag_J = F.softplus(logit_x) + F.softplus(-logit_x) \
+                     - F.softplus(-pre_logit_scale)
+
+        return logit_x, torch.sum(log_diag_J, dim=(1, 2, 3))
+
+
+class Hyperparameters():
+    def __init__(self, base_dim, res_blocks, bottleneck,
+                 skip, weight_norm, coupling_bn, affine):
+        """Instantiates a set of hyperparameters used for constructing layers.
+        Args:
+            base_dim: features in residual blocks of first few layers.
+            res_blocks: number of residual blocks to use.
+            bottleneck: True if use bottleneck, False otherwise.
+            skip: True if use skip architecture, False otherwise.
+            weight_norm: True if apply weight normalization, False otherwise.
+            coupling_bn: True if batchnorm coupling layer output, False otherwise.
+            affine: True if use affine coupling, False if use additive coupling.
+        """
+        self.base_dim = base_dim
+        self.res_blocks = res_blocks
+        self.bottleneck = bottleneck
+        self.skip = skip
+        self.weight_norm = weight_norm
+        self.coupling_bn = coupling_bn
+        self.affine = affine
+
+
+if __name__ == '__main__':
+    import torch.distributions as distributions
+    import numpy as np
+    import torch
+
+    hps = Hyperparameters(
+        base_dim=32,
+        res_blocks=2,
+        bottleneck=32,
+        skip=True,
+        weight_norm=True,
+        coupling_bn=False,
+        affine=True)
+
+    prior = distributions.Normal(  # isotropic standard normal distribution
+        torch.tensor(0.), torch.tensor(1.))
+
+    flow = RealNVP(prior=prior, hps=hps).cuda()
+    x = torch.randn(24, 512, 1, 1)
+    # log-determinant of Jacobian from the logit transform
+    x, log_det = logit_transform(x)
+    x = x.cuda()
+    log_det = log_det.cuda()
+
+    # log-likelihood of input minibatch
+    log_ll, weight_scale = flow(x)
+    print(log_ll)
+    print(weight_scale)
