@@ -86,7 +86,7 @@ class FlowLoader:
             if config.dataset.get_dataset_num(self.split_dataset_type) < len(self.pc_ids):
                 random.shuffle(self.pc_ids)
                 # self.pc_ids = self.pc_ids[:config.flow.ae_dataset_size[self.split_dataset_type]]
-                self.pc_ids = self.pc_ids[:config.dataset.dataset_size[self.split_dataset_type]]
+                self.pc_ids = self.pc_ids[:config.dataset.get_dataset_num(self.split_dataset_type)]
 
     def load_ae_latents(self):
         #  self.lm_latent_paths shape = [dim_0 = pc_id]
