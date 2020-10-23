@@ -7,9 +7,9 @@ import numpy as np
 from torch.utils.data import DataLoader
 
 from ..dataloader import PCDataset
-from .networks.loss import IEVAELoss
+from .networks.loss import IEVAELoss, PCLoss
 from .networks import Network
-from .networks.models import LMNetAE, LMImgEncoder, ImgEncoderVAE
+from .networks.models import LMNetAE, LMImgEncoder, ImgEncoderVAE, LMDecoder
 from ..visualizer import WandbVisualizer, tsne
 from ..config import config
 from ..utils import model_util
@@ -33,6 +33,7 @@ class TrainVAESession(Network):
         self.latent_ids = []
         self.visualizer = None
         self.prior_model = None
+        self.decoder = None
         if config.cuda.dataparallel_mode == 'DistributedDataParallel':
             self.sampler = sampler
 
@@ -54,7 +55,12 @@ class TrainVAESession(Network):
                 with torch.no_grad():
                     latent_pc, _ = self.prior_model(inputs_pc)
                 latent_img, mu, log_var = self.model(inputs_img)
-                loss = IEVAELoss(latent_img, latent_pc, mu, log_var)
+                with torch.no_grad():
+                    reconst_imgs = self.decoder(latent_img)
+
+                kld_loss = IEVAELoss(mu, log_var)
+                cd_loss = PCLoss.chamfer_distance(reconst_imgs, targets)
+                loss = kld_loss + cd_loss
                 # loss = torch.nn.L1Loss()(latent_img, latent_pc) * config.network.loss_scale_factor
 
                 loss.backward()
@@ -76,14 +82,24 @@ class TrainVAESession(Network):
     def set_model(self):
         models = {'LMNetAE': LMNetAE, 'LMImgEncoder': LMImgEncoder, 'ImgEncoderVAE': ImgEncoderVAE}
         self.model = ImgEncoderVAE(latent_size=config.network.latent_size, z_dim=config.network.z_dim)
+        '''load prior model
+        '''
         self.prior_model = models[config.network.prior_model](config.dataset.resample_amount)
         prior_model_path = '%s/%s/epoch%.3d.pth' % (config.network.checkpoint_path,
                                                     config.network.prior_model,
                                                     int(config.network.prior_epoch))
         self.prior_model = model_util.set_model_device(self.prior_model)
         self.prior_model = model_util.set_model_parallel_gpu(self.prior_model)
+        '''load decoder
+        '''
+        self.decoder = LMDecoder(config.dataset.resample_amount)
+        self.decoder = model_util.set_model_device(self.decoder)
+        self.decoder = model_util.set_model_parallel_gpu(self.decoder)
+
         if config.cuda.dataparallel_mode == 'Dataparallel':
             self.prior_model.load_state_dict(state_dict=torch.load(f=prior_model_path))
+            self.decoder = model_util.load_partial_pretrained_model(self.prior_model, config.network.prior_epoch,
+                                                                    self.decoder, 'decoder')
         elif config.cuda.dataparallel_mode == 'DistributedDataParallel':
             # Use a barrier() to make sure that process 1 loads the model after process
             # 0 saves it.
@@ -92,7 +108,11 @@ class TrainVAESession(Network):
             map_location = {'cuda:%d' % 0: 'cuda:%d' % config.cuda.rank}
             self.prior_model.load_state_dict(
                 state_dict=torch.load(f=prior_model_path, map_location=map_location))
+            self.decoder = model_util.load_partial_pretrained_model(self.prior_model, config.network.prior_epoch,
+                                                                    self.decoder, 'decoder')
 
+        '''load VAE
+        '''
         self.model = model_util.set_model_device(self.model)
         self.model = model_util.set_model_parallel_gpu(self.model)
         self._epoch = model_util.load_model_pretrain(self.model, self._pretrained_epoch, self._is_scratch)

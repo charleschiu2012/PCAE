@@ -1,14 +1,11 @@
 from tensorboardX import SummaryWriter
-from PCAE.config import config
+
 from PCAE.dataloader import PCDataset, FlowDataset
 from PCAE.utils.shapenet_taxonomy import shapenet_id_to_category
 
 
 def add_tsne_data(latent_list, latent_data):
-    if config.cuda.device == 'cpu':
-        data = latent_data.detach().numpy() if latent_data.requires_grad else latent_data.numpy()
-    else:
-        data = latent_data.detach().cpu().numpy() if latent_data.requires_grad else latent_data.cpu().numpy()
+    data = latent_data.detach().cpu().numpy() if latent_data.requires_grad else latent_data.cpu().numpy()
 
     latent_list.extend(data)
 
@@ -49,10 +46,7 @@ def visualize_tsne(latent_list, label_list, job_type):
 
 
 def add_nice_tsne_data(latent_list, latent_data):
-    if config.cuda.device == 'cpu':
-        data = latent_data.detach().numpy() if latent_data.requires_grad else latent_data.numpy()
-    else:
-        data = latent_data.detach().cpu().numpy() if latent_data.requires_grad else latent_data.cpu().numpy()
+    data = latent_data.detach().cpu().numpy() if latent_data.requires_grad else latent_data.cpu().numpy()
 
     latent_list.extend(data)
 

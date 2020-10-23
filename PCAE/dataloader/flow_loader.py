@@ -6,12 +6,13 @@ import itertools
 import random
 from torchvision import transforms
 from torch.utils.data import Dataset
-from ..config import config
+
 from ..utils import pointcloud_util, shapenet_taxonomy
 
 
 class FlowDataset(Dataset):
-    def __init__(self, split_dataset_type: str):
+    def __init__(self, config, split_dataset_type: str):
+        self.config = config
         self.split_dataset_type = split_dataset_type
         self.dataset_loader = FlowLoader(split_dataset_type)
 
@@ -44,9 +45,10 @@ class FlowDataset(Dataset):
 
 
 class FlowLoader:
-    def __init__(self, split_dataset_type: str):
+    def __init__(self, config, split_dataset_type: str):
         assert split_dataset_type in ['train', 'test', 'valid']
 
+        self.config = config
         self.split_dataset_type = split_dataset_type
         self.split_dataset_path = None
         self.pc_ids = []
@@ -60,10 +62,10 @@ class FlowLoader:
 
     def set_split_dataset_path(self):
         if self.split_dataset_type == 'test':
-            self.split_dataset_path = os.path.join(config.dataset.dataset_path,
+            self.split_dataset_path = os.path.join(self.config.dataset.dataset_path,
                                                    'valid_models.json')
         else:
-            self.split_dataset_path = os.path.join(config.dataset.dataset_path,
+            self.split_dataset_path = os.path.join(self.config.dataset.dataset_path,
                                                    str(self.split_dataset_type) + '_models.json')
 
     def load_pc_ids(self):
@@ -71,7 +73,7 @@ class FlowLoader:
             jf = json.loads(reader.read())
 
             # train_keys = [shapenet_taxonomy.shapenet_category_to_id[class_id]
-            #               for class_id in config.flow.train_class]
+            #               for class_id in self.config.flow.train_class]
             #
             # for pc_class in jf.keys():
             #     for train_key in train_keys:
@@ -83,15 +85,15 @@ class FlowLoader:
                 for pc_class_with_id in jf[pc_class]:
                     self.pc_ids.append(pc_class_with_id)
 
-            if config.dataset.get_dataset_num(self.split_dataset_type) < len(self.pc_ids):
+            if self.config.dataset.get_dataset_num(self.split_dataset_type) < len(self.pc_ids):
                 random.shuffle(self.pc_ids)
-                # self.pc_ids = self.pc_ids[:config.flow.ae_dataset_size[self.split_dataset_type]]
-                self.pc_ids = self.pc_ids[:config.dataset.get_dataset_num(self.split_dataset_type)]
+                # self.pc_ids = self.pc_ids[:self.config.flow.ae_dataset_size[self.split_dataset_type]]
+                self.pc_ids = self.pc_ids[:self.config.dataset.get_dataset_num(self.split_dataset_type)]
 
     def load_ae_latents(self):
         #  self.lm_latent_paths shape = [dim_0 = pc_id]
         for pc_id in self.pc_ids:
-            self.ae_latent_paths.append(os.path.join(config.network.checkpoint_path +
+            self.ae_latent_paths.append(os.path.join(self.config.network.checkpoint_path +
                                                      '/{}_ae_latent/'.format(self.split_dataset_type),
                                                      pc_id, 'latent.npy'))
 
@@ -101,6 +103,6 @@ class FlowLoader:
             id_level = []
             self.ae_latent_paths.append(id_level)
             for idx in range(24):
-                self.ae_latent_paths[-1].append(os.path.join(config.network.checkpoint_path +
+                self.ae_latent_paths[-1].append(os.path.join(self.config.network.checkpoint_path +
                                                              '/{}_lm_latent/'.format(self.split_dataset_type),
                                                              pc_id, str(idx).zfill(2), 'latent.npy'))

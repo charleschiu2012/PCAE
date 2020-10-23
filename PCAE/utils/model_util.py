@@ -4,7 +4,6 @@ import collections
 import torch.distributed
 import logging
 from glob import glob
-from ..config import config
 
 
 def cleanup():

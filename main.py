@@ -7,8 +7,8 @@ if __name__ == '__main__':
     # train()
     # validate()
     # test(82)
-    # train_vae()
-    train_nice()
+    train_vae()
+    # train_nice()
     # test(140)  # single gpu ep150
     # test(96)  # multi gpu ep100 LMNetAE
     # test(100)  # single gpu ep100 PointNetAE

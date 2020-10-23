@@ -1,7 +1,7 @@
 # PCAE/visualizer/__init__
 import wandb
 import numpy as np
-from ..config import config
+
 from ..dataloader import PCDataset, FlowDataset
 
 
@@ -12,47 +12,48 @@ def launch_multiple_runs():
 
 class WandbVisualizer:
 
-    def __init__(self, job_type, model):
-        self.project_name = config.wandb.project_name
-        self.run_name = config.wandb.run_name
+    def __init__(self, config, job_type, model):
+        self.config = config
+        self.project_name = self.config.wandb.project_name
+        self.run_name = self.config.wandb.run_name
         self.step_loss = .0
         self.epoch_loss = .0
         self._model = model
         self.job_type = job_type
-        if config.network.mode_flag == 'ae':
-            self.config = {'dataset': config.dataset.dataset_name,
-                           'job_type': self.job_type,
-                           'dataparallel_mode': config.cuda.dataparallel_mode,
-                           'split_dataset_size': PCDataset(self.job_type).__len__(),
-                           'machine': config.wandb.machine_id,
-                           'model': config.network.prior_model,
-                           'loss_fn': config.network.loss_func,
-                           'batch_size': config.network.batch_size,
-                           'epoch_num': config.network.epoch_num,
-                           'learning_rate': config.network.learning_rate,
-                           'momentum': config.network.momentum}
-        elif config.network.mode_flag == 'lm':
-            self.config = {'dataset': config.dataset.dataset_name,
-                           'job_type': self.job_type,
-                           'split_dataset_size': PCDataset(self.job_type).__len__(),
-                           'machine': config.wandb.machine_id,
-                           'model': config.network.img_encoder,
-                           'loss_fn': config.network.loss_func,
-                           'batch_size': config.network.batch_size,
-                           'epoch_num': config.network.epoch_num,
-                           'learning_rate': config.network.learning_rate,
-                           'momentum': config.network.momentum}
-        elif config.network.mode_flag == 'nice':
-            self.config = {'dataset': config.dataset.dataset_name,
-                           'job_type': self.job_type,
-                           'split_dataset_size': FlowDataset(self.job_type).__len__(),
-                           'machine': config.wandb.machine_id,
-                           'model': 'NICE',
-                           'loss_fn': 'NICE_loss',
-                           'batch_size': config.nice.batch_size,
-                           'epoch_num': config.nice.num_iters,
-                           'learning_rate': config.network.learning_rate,
-                           'momentum': config.network.momentum}
+        if self.config.network.mode_flag == 'ae':
+            self.wandb_config = {'dataset': self.config.dataset.dataset_name,
+                                 'job_type': self.job_type,
+                                 'dataparallel_mode': self.config.cuda.dataparallel_mode,
+                                 'split_dataset_size': PCDataset(self.job_type).__len__(),
+                                 'machine': self.config.wandb.machine_id,
+                                 'model': self.config.network.prior_model,
+                                 'loss_fn': self.config.network.loss_func,
+                                 'batch_size': self.config.network.batch_size,
+                                 'epoch_num': self.config.network.epoch_num,
+                                 'learning_rate': self.config.network.learning_rate,
+                                 'momentum': self.config.network.momentum}
+        elif self.config.network.mode_flag == 'lm':
+            self.wandb_config = {'dataset': self.config.dataset.dataset_name,
+                                 'job_type': self.job_type,
+                                 'split_dataset_size': PCDataset(self.job_type).__len__(),
+                                 'machine': self.config.wandb.machine_id,
+                                 'model': self.config.network.img_encoder,
+                                 'loss_fn': self.config.network.loss_func,
+                                 'batch_size': self.config.network.batch_size,
+                                 'epoch_num': self.config.network.epoch_num,
+                                 'learning_rate': self.config.network.learning_rate,
+                                 'momentum': self.config.network.momentum}
+        elif self.config.network.mode_flag == 'nice':
+            self.wandb_config = {'dataset': self.config.dataset.dataset_name,
+                                 'job_type': self.job_type,
+                                 'split_dataset_size': FlowDataset(self.job_type).__len__(),
+                                 'machine': self.config.wandb.machine_id,
+                                 'model': 'NICE',
+                                 'loss_fn': 'NICE_loss',
+                                 'batch_size': self.config.nice.batch_size,
+                                 'epoch_num': self.config.nice.num_iters,
+                                 'learning_rate': self.config.network.learning_rate,
+                                 'momentum': self.config.network.momentum}
 
         self.log_init_parameters()
         self.watch_model()
@@ -60,8 +61,8 @@ class WandbVisualizer:
     def log_init_parameters(self):
         wandb.init(project=self.project_name,
                    name=self.run_name,
-                   config=self.config,
-                   dir=config.wandb.dir_path,
+                   config=self.wandb_config,
+                   dir=self.config.wandb.dir_path,
                    job_type=self.job_type,
                    reinit=True,
                    force=False)

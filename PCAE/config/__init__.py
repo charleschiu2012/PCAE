@@ -7,7 +7,6 @@ from pathlib import Path
 from .cuda import CudaConfig
 from .dataset import DatasetConfig
 from .network import NetworkConfig
-from .flow import FlowConfig
 from .wandb import WandbConfig
 from .nice import NICEConfig
 
@@ -31,7 +30,7 @@ gc.collect()
 
 
 class Config:
-    def __init__(self):
+    def __init__(self, argument):
         # set_seeds()
         self.home_dir = str(Path.home())
         # self.data_dir = '/dev/shm/'
@@ -40,26 +39,27 @@ class Config:
                                is_parallel=True,
                                parallel_gpu_ids=[0, 1, 2, 3, 4, 5, 6, 7],
                                # parallel_gpu_ids=[0, 1],
-                               dataparallel_mode='Dataparallel')  # Dataparallel DistributedDataParallel
+                               dataparallel_mode='DistributedDataParallel')  # Dataparallel DistributedDataParallel
         # OMP_NUM_THREADS=1 python -m torch.distributed.launch --nproc_per_node=8 main.py
 
         self.dataset = DatasetConfig(dataset_name='LMNet_ShapeNet_PC',
                                      dataset_path=self.home_dir + '/data/LMNet-data/',
                                      # sudo mount tmpfs /eva_data/hdd2/charles/Ramdisk/ -t tmpfs -o size=70G
-                                     # dataset_size={'train': 35022 * 24, 'test': 8762 * 24, 'valid': 8762 * 24},
+                                     dataset_size={'train': 35022 * 24, 'test': 8762 * 24, 'valid': 8762 * 24},
                                      # dataset_size={'train': 50, 'test': 50, 'valid': 50},
                                      # LM Dataset
-                                     dataset_size={'train': 35022, 'test': 8762, 'valid': 8762},  # AE Dataset
+                                     # dataset_size={'train': 35022, 'test': 8762, 'valid': 8762},  # AE Dataset
                                      resample_amount=2048,
                                      # not_train_class=['airplane', 'bench', 'cabinet']
                                      )
         # LMNetAE_dataset_size' = {'train': 35022, 'test': 8762, 'valid': 8762}
 
-        self.network = NetworkConfig(mode_flag='nice',  # ae, lm, vae
+        self.network = NetworkConfig(mode_flag='lm',  # ae, lm, vae, nice
                                      img_encoder="ImgEncoderVAE",  # LMImgEncoder ImgEncoderVAE
                                      prior_model="LMNetAE",  # PointNetAE LMNetAE
                                      # checkpoint_path=self.home_dir + 'data/LMNet-data/checkpoint/',
                                      checkpoint_path=self.home_dir + '/data/LMNet-data/checkpoint/DDP',
+                                     # checkpoint_path=self.home_dir + '/data/LMNet-data/checkpoint/DDP/fewer_class',  # unseen class
                                      prior_epoch='300',
                                      loss_function='cd',  # emd cd emd+cd l1
                                      loss_scale_factor=10000,
@@ -69,23 +69,9 @@ class Config:
                                      epoch_num=300,
                                      optimizer='Adam',
                                      # learning_rate=5e-4,  # ae
-                                     # learning_rate=5e-5,  # lm
-                                     learning_rate=1e-3,  # nice
+                                     learning_rate=5e-5,  # lm
+                                     # learning_rate=1e-3,  # nice
                                      momentum=0.9)
-
-        # self.flow = FlowConfig(batch_size=15,
-        #                        ae_dataset_size={'train': 35022, 'test': 8762, 'valid': 8762},
-        #                        lm_dataset_size={'train': 35022 * 24, 'test': 8762 * 24, 'valid': 8762 * 24},
-        #                        train_class=['sofa'],
-        #                        iter=2 * 10e4,
-        #                        n_flow=32,
-        #                        n_block=4,
-        #                        lu_flag=True,
-        #                        affine_flag=True,
-        #                        n_bits=5,
-        #                        lr=1e-4,
-        #                        temp=0.7,
-        #                        n_sample=20)
 
         self.nice = NICEConfig(batch_size=200,
                                latent='normal',
@@ -95,11 +81,11 @@ class Config:
                                coupling=4,
                                mask_config=1.)
 
-        self.wandb = WandbConfig(project_name='PC_NICE',
-                                 run_name='{}'.format('NICE'),
+        self.wandb = WandbConfig(project_name='PCVAE',
+                                 run_name='{}'.format('VAE'),
                                  dir_path=self.home_dir + '/PCAE-TWCC/',
                                  machine_id="TWCC",
-                                 step_loss_freq=100,
+                                 step_loss_freq=500,
                                  visual_flag=True)
 
     def show_config(self):
