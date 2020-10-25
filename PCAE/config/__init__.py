@@ -15,7 +15,6 @@ os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3,4,5,6,7'
 torch.cuda.empty_cache()
 gc.collect()
 
-
 # import random
 # import numpy as np
 # def set_seeds():
@@ -42,6 +41,7 @@ class Config:
                                dataparallel_mode=argument.dataparallel_mode)  # Dataparallel DistributedDataParallel
         # OMP_NUM_THREADS=1 python -m torch.distributed.launch --nproc_per_node=8 main.py
 
+        train_class_list = ''.join(argument.train_half_class).split(', ')
         self.dataset = DatasetConfig(dataset_name=argument.dataset_name,
                                      dataset_path=self.home_dir + '/data/LMNet-data/',
                                      # sudo mount tmpfs /eva_data/hdd2/charles/Ramdisk/ -t tmpfs -o size=70G
@@ -49,7 +49,7 @@ class Config:
                                                    'test': argument.test_dataset_size,
                                                    'valid': argument.valid_dataset_size},
                                      resample_amount=2048,
-                                     # not_train_class=['airplane', 'bench', 'cabinet']
+                                     train_class=train_class_list
                                      )
 
         self.network = NetworkConfig(mode_flag=argument.mode_flag,  # ae, lm, vae, nice

@@ -4,13 +4,13 @@ class DatasetConfig:
                  dataset_path: str,
                  dataset_size: dict,
                  resample_amount: int,
-                 not_train_class=None):
+                 train_class=None):
         self._dataset_name = dataset_name
         self._dataset_path = dataset_path
         self.dataset_size = dataset_size
         self._split_dataset_types = ['train', 'test', 'valid']
         self._resample_amount = resample_amount
-        self.not_train_class = not_train_class
+        self.train_class = train_class
 
     @property
     def dataset_name(self) -> str:

@@ -35,11 +35,13 @@ parser.add_argument('--valid_dataset_size', type=int, required=True,
                     help='The size of valid dataset')
 parser.add_argument('--resample_amount', type=int, required=True, default=2048,
                     help='The num of points to sample from original point cloud')
+parser.add_argument('--train_half_class', type=list,
+                    help='Train with half of the classes')
 '''network
 '''
 parser.add_argument('--mode_flag', type=str, required=True,
                     help='Mode to train')
-parser.add_argument('--img_encoder', type=str, required=True,
+parser.add_argument('--img_encoder', type=str,
                     help='Which Image encoder')
 parser.add_argument('--prior_model', type=str, required=True,
                     help='Which point cloud autoencoder')
@@ -113,7 +115,7 @@ class AETrainSession(Network):
                 self.log_step_loss(loss=loss.item() / config.network.loss_scale_factor, step_idx=idx + 1)
                 self.avg_step_loss = 0
 
-            # self.save_model()
+            self.save_model()
             self.log_epoch_loss()
             self._epoch += 1
 
@@ -133,7 +135,7 @@ class AETrainSession(Network):
 
         if step_idx % config.wandb.step_loss_freq == 0:
             self.avg_step_loss /= config.wandb.step_loss_freq
-            logging.info('Epoch %d, %d Step, loss = %.6f' % (self._epoch, step_idx, self.avg_step_loss))
+            logging.info('Epoch %d, %d Step, loss = %.10f' % (self._epoch, step_idx, self.avg_step_loss))
 
             if config.wandb.visual_flag:
                 self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss)

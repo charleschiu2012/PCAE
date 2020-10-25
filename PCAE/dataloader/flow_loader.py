@@ -1,13 +1,10 @@
 import os
 import json
 import numpy as np
-import copy
-import itertools
 import random
-from torchvision import transforms
 from torch.utils.data import Dataset
 
-from ..utils import pointcloud_util, shapenet_taxonomy
+from ..utils import shapenet_taxonomy
 
 
 class FlowDataset(Dataset):
@@ -49,6 +46,7 @@ class FlowLoader:
         assert split_dataset_type in ['train', 'test', 'valid']
 
         self.config = config
+        self.train_classes = None
         self.split_dataset_type = split_dataset_type
         self.split_dataset_path = None
         self.pc_ids = []
@@ -73,16 +71,11 @@ class FlowLoader:
         with open(self.split_dataset_path, 'r') as reader:
             jf = json.loads(reader.read())
 
-            # train_keys = [shapenet_taxonomy.shapenet_category_to_id[class_id]
-            #               for class_id in self.config.flow.train_class]
-            #
-            # for pc_class in jf.keys():
-            #     for train_key in train_keys:
-            #         if pc_class == train_key:
-            #             for pc_class_with_id in jf[pc_class]:
-            #                 self.pc_ids.append(pc_class_with_id)
+            if self.config.dataset.train_class is not None:
+                self.train_classes = [shapenet_taxonomy.shapenet_category_to_id[class_id]
+                                      for class_id in self.config.dataset.train_class]
 
-            for pc_class in jf.keys():
+            for pc_class in self.train_classes:
                 for pc_class_with_id in jf[pc_class]:
                     self.pc_ids.append(pc_class_with_id)
 

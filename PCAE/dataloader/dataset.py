@@ -83,6 +83,7 @@ class DatasetLoader:
         self.config = config
         assert split_dataset_type in ['train', 'test', 'valid']
 
+        self.train_classes = None
         self.split_dataset_type = split_dataset_type
         self.split_dataset_path = None
         self.pc_ids = []
@@ -106,15 +107,12 @@ class DatasetLoader:
     def load_pc_ids(self):
         with open(self.split_dataset_path, 'r') as reader:
             jf = json.loads(reader.read())
-            try:
-                not_train_keys = [shapenet_taxonomy.shapenet_category_to_id[class_id]
-                                  for class_id in self.config.dataset.not_train_class]
-                for not_train_key in not_train_keys:
-                    _ = jf.pop(not_train_key)
-            except:
-                pass
 
-            for pc_class in jf.keys():
+            if self.config.dataset.train_class is not None:
+                self.train_classes = [shapenet_taxonomy.shapenet_category_to_id[class_id]
+                                      for class_id in self.config.dataset.train_class]
+
+            for pc_class in self.train_classes:
                 for pc_class_with_id in jf[pc_class]:
                     self.pc_ids.append(pc_class_with_id)
 
@@ -126,7 +124,7 @@ class DatasetLoader:
             if self.config.network.mode_flag == 'ae':
                 for pc_id in self.pc_ids:
                     self.pc_paths.append(os.path.join(self.config.dataset.dataset_path + 'ShapeNet_pointclouds/', pc_id,
-                                         'pointcloud_{}.npy'.format(self.config.dataset.resample_amount)))
+                                                      'pointcloud_{}.npy'.format(self.config.dataset.resample_amount)))
 
     def pair_pc_img(self):
         num_views = 24
