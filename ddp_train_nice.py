@@ -5,12 +5,12 @@ from tqdm import tqdm
 import torch
 import numpy as np
 from torch.utils.data import DataLoader
+import torch.distributions as distributions
 
 from PCAE.config import Config
-from PCAE.dataloader import PCDataset
-from PCAE.jobs.networks.loss import chamfer_distance_loss, emd_loss
+from PCAE.dataloader import FlowDataset
 from PCAE.jobs.networks import Network
-from PCAE.jobs.networks.models import PointNetAE, LMNetAE, LMImgEncoder
+from PCAE.jobs.networks.models import LMNetAE, LMDecoder, NICE
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
 
@@ -45,7 +45,7 @@ parser.add_argument('--prior_model', type=str, required=True,
                     help='Which point cloud autoencoder')
 parser.add_argument('--checkpoint_path', type=str, required=True,
                     help='Where to store/load weights')
-parser.add_argument('--prior_epoch', type=str, default='300',
+parser.add_argument('--prior_epoch', type=str, required=True, default='300',
                     help='Which epoch of autoencoder to use to ImgEncoder')
 parser.add_argument('--loss_scale_factor', type=int, required=True, default=10000,
                     help='Scale your loss')
@@ -57,8 +57,24 @@ parser.add_argument('--z_dim', type=int, default=512,
                     help='Size of vae latent')
 parser.add_argument('--epoch_num', type=int, required=True, default=300,
                     help='How many epoch to train')
-parser.add_argument('--learning_rate', type=float, required=True,
+parser.add_argument('--learning_rate', type=float, required=True, default=5e-5,
                     help='Learning rate')
+'''nice
+'''
+parser.add_argument('--nice_batch_size', type=int, required=True, default=200,
+                    help='Batch size for NICE')
+parser.add_argument('--latent_distribution', type=str, required=True, default='normal',
+                    help='Prior distribution for NICE')
+parser.add_argument('--mid_dim', type=int, required=True, default=128,
+                    help='mid_dim')  #TODO
+parser.add_argument('--num_iters', type=int, required=True, default=25000,
+                    help='Number of iterations')
+parser.add_argument('--num_sample', type=int, required=True, default=64,
+                    help='Number of samples')
+parser.add_argument('--coupling', type=int, required=True, default=4,
+                    help='Number of coupling layers')
+parser.add_argument('--mask_config', type=float, required=True, default=1.,
+                    help='mask_config')  #TODO
 '''wandb
 '''
 parser.add_argument('--project_name', type=str, required=True,
@@ -76,7 +92,7 @@ argument = parser.parse_args()
 config = Config(argument)
 
 
-class AETrainSession(Network):
+class NICETrainSession(Network):
     def __init__(self, dataloader, model=None, sampler=None):
         super().__init__(config=config, data_loader=dataloader, data_type='train', epoch=1, model=model)
         self._pretrained_epoch = ''
@@ -84,10 +100,17 @@ class AETrainSession(Network):
 
         self.avg_step_loss = 0.0
         self.avg_epoch_loss = 0.0
+        self.prior_model = None
+        self.decoder = None
         self.model_util = ModelUtil(config=config)
         self.visualizer = None
         if config.cuda.dataparallel_mode == 'DistributedDataParallel':
             self.sampler = sampler
+
+        self.full_dim = 512
+        self.hidden = 5
+        if config.nice.latent == 'normal':
+            self.prior = torch.distributions.Normal(torch.tensor(0.).cuda(), torch.tensor(1.).cuda())
 
     def train(self):
         self.set_model()
@@ -101,16 +124,14 @@ class AETrainSession(Network):
             if config.cuda.dataparallel_mode == 'DistributedDataParallel':
                 self.sampler.set_epoch(self._epoch)
 
-            for idx, (inputs_pc, targets, pc_ids) in tqdm(enumerate(self.get_data())):
+            for idx, (ae_latents, latent_ids) in tqdm(enumerate(self.get_data())):
                 self.optimizer.zero_grad()
-                latents, predicts = self.model(inputs_pc)
-
-                loss = chamfer_distance_loss(predicts, targets) * config.network.loss_scale_factor
+                loss = -self.model(ae_latents).mean()
 
                 loss.backward()
                 self.optimizer.step()
 
-                self.log_step_loss(loss=loss.item() / config.network.loss_scale_factor, step_idx=idx + 1)
+                self.log_step_loss(loss=loss.item(), step_idx=idx + 1)
                 self.avg_step_loss = 0
 
             # self.save_model()
@@ -121,11 +142,27 @@ class AETrainSession(Network):
             self.model_util.cleanup()
 
     def set_model(self):
-        models = {'PointNetAE': PointNetAE, 'LMNetAE': LMNetAE, 'LMImgEncoder': LMImgEncoder}
-        self.model = models[config.network.prior_model](config.dataset.resample_amount)
+        self.model = NICE(prior=self.prior,
+                          coupling=config.nice.coupling,
+                          in_out_dim=self.full_dim,
+                          mid_dim=config.nice.mid_dim,
+                          hidden=self.hidden,
+                          mask_config=config.nice.mask_config)
         self.model = self.model_util.set_model_device(self.model)
         self.model = self.model_util.set_model_parallel_gpu(self.model)
         self._epoch = self.model_util.load_model_pretrain(self.model, self._pretrained_epoch, self._is_scratch)
+        # '''Prior Model
+        # '''
+        # self.prior_model = LMNetAE(config.dataset.resample_amount)
+        # self.prior_model = self.model_util.set_model_device(self.prior_model)
+        # self.prior_model = self.model_util.set_model_parallel_gpu(self.prior_model)
+        # self.prior_model = self.model_util.load_prior_model(self.prior_model)
+        # '''PC Decoder
+        # '''
+        # self.decoder = LMDecoder(config.dataset.resample_amount)
+        # self.decoder = self.model_util.set_model_device(self.decoder)
+        # self.decoder = self.model_util.set_model_parallel_gpu(self.decoder)
+        # self.decoder = self.model_util.load_partial_pretrained_model(self.prior_model, self.decoder, 'decoder')
 
     def log_step_loss(self, loss, step_idx):
         self.avg_step_loss += loss
@@ -146,12 +183,12 @@ class AETrainSession(Network):
 
         logging.info('Logging Epoch Loss...')
         if config.wandb.visual_flag:
-            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='cd',
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='NICE',
                                            train_epoch_loss=self.avg_epoch_loss)
             self.avg_epoch_loss = .0
 
 
-def trainAE():
+def trainNICE():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-8s %(message)s',
                         datefmt='%Y-%m-%d %H:%M:%S')
     if (argument.local_rank is not None) and config.cuda.rank[0] == 0:
@@ -159,7 +196,7 @@ def trainAE():
     elif argument.local_rank is None:
         config.show_config()
 
-    train_dataset = PCDataset(config=config, split_dataset_type='train')
+    train_dataset = FlowDataset(config=config, split_dataset_type='train')
 
     if config.cuda.dataparallel_mode == 'Dataparallel':
         train_dataloader = DataLoader(dataset=train_dataset,
@@ -167,7 +204,7 @@ def trainAE():
                                       shuffle=True,
                                       pin_memory=True,
                                       num_workers=multiprocessing.cpu_count() * 5)
-        train_session = AETrainSession(dataloader=train_dataloader)
+        train_session = NICETrainSession(dataloader=train_dataloader)
         train_session.train()
 
     elif config.cuda.dataparallel_mode == 'DistributedDataParallel':
@@ -182,9 +219,9 @@ def trainAE():
                                       sampler=train_sampler,
                                       num_workers=8,
                                       worker_init_fn=np.random.seed(0))
-        train_session = AETrainSession(dataloader=train_dataloader, sampler=train_sampler)
+        train_session = NICETrainSession(dataloader=train_dataloader, sampler=train_sampler)
         train_session.train()
 
 
 if __name__ == '__main__':
-    trainAE()
+    trainNICE()

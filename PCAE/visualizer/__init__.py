@@ -1,8 +1,14 @@
 # PCAE/visualizer/__init__
 import wandb
 import numpy as np
+import multiprocessing
+from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
+from sklearn.preprocessing import StandardScaler
+import pandas as pd
+import plotly.express as px
 
-from ..dataloader import PCDataset, FlowDataset
+from PCAE.utils.shapenet_taxonomy import shapenet_id_to_category
 
 
 def launch_multiple_runs():
@@ -20,40 +26,14 @@ class WandbVisualizer:
         self.epoch_loss = .0
         self._model = model
         self.job_type = job_type
-        if self.config.network.mode_flag == 'ae':
-            self.wandb_config = {'dataset': self.config.dataset.dataset_name,
-                                 'job_type': self.job_type,
-                                 'dataparallel_mode': self.config.cuda.dataparallel_mode,
-                                 'split_dataset_size': PCDataset(self.job_type).__len__(),
-                                 'machine': self.config.wandb.machine_id,
-                                 'model': self.config.network.prior_model,
-                                 'loss_fn': self.config.network.loss_func,
-                                 'batch_size': self.config.network.batch_size,
-                                 'epoch_num': self.config.network.epoch_num,
-                                 'learning_rate': self.config.network.learning_rate,
-                                 'momentum': self.config.network.momentum}
-        elif self.config.network.mode_flag == 'lm':
-            self.wandb_config = {'dataset': self.config.dataset.dataset_name,
-                                 'job_type': self.job_type,
-                                 'split_dataset_size': PCDataset(self.job_type).__len__(),
-                                 'machine': self.config.wandb.machine_id,
-                                 'model': self.config.network.img_encoder,
-                                 'loss_fn': self.config.network.loss_func,
-                                 'batch_size': self.config.network.batch_size,
-                                 'epoch_num': self.config.network.epoch_num,
-                                 'learning_rate': self.config.network.learning_rate,
-                                 'momentum': self.config.network.momentum}
-        elif self.config.network.mode_flag == 'nice':
-            self.wandb_config = {'dataset': self.config.dataset.dataset_name,
-                                 'job_type': self.job_type,
-                                 'split_dataset_size': FlowDataset(self.job_type).__len__(),
-                                 'machine': self.config.wandb.machine_id,
-                                 'model': 'NICE',
-                                 'loss_fn': 'NICE_loss',
-                                 'batch_size': self.config.nice.batch_size,
-                                 'epoch_num': self.config.nice.num_iters,
-                                 'learning_rate': self.config.network.learning_rate,
-                                 'momentum': self.config.network.momentum}
+        self.wandb_config = {'dataset': self.config.dataset.dataset_name,
+                             'job_type': self.job_type,
+                             'dataparallel_mode': self.config.cuda.dataparallel_mode,
+                             'split_dataset_size': self.config.dataset.dataset_size[self.job_type],
+                             'machine': self.config.wandb.machine_id,
+                             'batch_size': self.config.network.batch_size,
+                             'epoch_num': self.config.network.epoch_num,
+                             'learning_rate': self.config.network.learning_rate}
 
         self.log_init_parameters()
         self.watch_model()
@@ -76,11 +56,63 @@ class WandbVisualizer:
         # in your code you can pass a step index. Doesn't do with step_idx
         wandb.log({'step_loss': step_loss, 'step': step_idx})
 
-    def log_epoch_loss(self, epoch_idx, train_epoch_loss=None, valid_epoch_loss=None):
+    def log_epoch_loss(self, epoch_idx, loss_type: str, train_epoch_loss=None, valid_epoch_loss=None):
         if self.job_type == 'train':
-            wandb.log({'train_epoch_loss': train_epoch_loss, 'epoch': epoch_idx})
+            wandb.log({'train_{}_epoch_loss'.format(loss_type): train_epoch_loss, 'epoch': epoch_idx})
         elif self.job_type == 'valid':
-            wandb.log({'valid_epoch_loss': valid_epoch_loss, 'epoch': epoch_idx})
+            wandb.log({'valid_{}_epoch_loss'.format(loss_type): valid_epoch_loss, 'epoch': epoch_idx})
+
+    @staticmethod
+    def add_tsne_data(latent_list, latent_data):
+        data = latent_data.detach().cpu().numpy() if latent_data.requires_grad else latent_data.cpu().numpy()
+
+        latent_list.extend(data)
+
+        return latent_list
+
+    @staticmethod
+    def add_tsne_label(label_list, label):
+        labels = []
+        for i in range(len(label)):
+            label_id = label[i].split('/')[0]
+            label_category = shapenet_id_to_category[label_id]
+            labels.append(label_category)
+
+        label_list.extend(labels)
+
+        return label_list
+
+    @staticmethod
+    def compute_tsne(latent_list, label_list):
+        print('latent_num: ', len(latent_list))
+        print('label_num: ', len(label_list))
+        latent_array = np.array(latent_list)
+        label_array = np.array(label_list)
+        # num_samples = 10000
+        # latent_array = latent_array[:num_samples]
+        # label_array = label_array[:num_samples]
+
+        num_components = 100
+        pca = PCA(n_components=num_components)
+        reduced = pca.fit_transform(latent_array)
+
+        tsne = TSNE(n_components=3, perplexity=25.0, n_jobs=multiprocessing.cpu_count() * 5)
+        tsne_result = tsne.fit_transform(reduced)
+        tsne_result_scaled = StandardScaler().fit_transform(tsne_result)
+        return tsne_result_scaled, label_array
+
+    @staticmethod
+    def draw_tsne(tsne_result_scaled, label_array, tsne_name):
+        wandb.init(project="TSNE")
+
+        tsne_data = {"X": tsne_result_scaled[:, 0],
+                     "Y": tsne_result_scaled[:, 1],
+                     "Z": tsne_result_scaled[:, 2],
+                     "Label": label_array}
+
+        tsne_df = pd.DataFrame(tsne_data)
+        fig = px.scatter_3d(tsne_df, x=tsne_df.X, y=tsne_df.Y, z=tsne_df.Z, color=tsne_df.Label)
+        wandb.log({"{}_TSNE".format(tsne_name): fig})
 
     @staticmethod
     def log_point_clouds(predict_pc, target_pc):

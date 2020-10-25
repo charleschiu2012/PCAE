@@ -8,9 +8,9 @@ from torch.utils.data import DataLoader
 
 from PCAE.config import Config
 from PCAE.dataloader import PCDataset
-from PCAE.jobs.networks.loss import chamfer_distance_loss, emd_loss
+from PCAE.jobs.networks.loss import KLDLoss, chamfer_distance_loss
 from PCAE.jobs.networks import Network
-from PCAE.jobs.networks.models import PointNetAE, LMNetAE, LMImgEncoder
+from PCAE.jobs.networks.models import PointNetAE, LMNetAE, LMImgEncoder, LMDecoder, ImgEncoderVAE
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
 
@@ -45,7 +45,7 @@ parser.add_argument('--prior_model', type=str, required=True,
                     help='Which point cloud autoencoder')
 parser.add_argument('--checkpoint_path', type=str, required=True,
                     help='Where to store/load weights')
-parser.add_argument('--prior_epoch', type=str, default='300',
+parser.add_argument('--prior_epoch', type=str, required=True,
                     help='Which epoch of autoencoder to use to ImgEncoder')
 parser.add_argument('--loss_scale_factor', type=int, required=True, default=10000,
                     help='Scale your loss')
@@ -53,11 +53,11 @@ parser.add_argument('--batch_size', type=int, required=True, default=32,
                     help='Batch size of point cloud or image')
 parser.add_argument('--latent_size', type=int, required=True, default=512,
                     help='Size of latent')
-parser.add_argument('--z_dim', type=int, default=512,
+parser.add_argument('--z_dim', type=int, required=True, default=512,
                     help='Size of vae latent')
 parser.add_argument('--epoch_num', type=int, required=True, default=300,
                     help='How many epoch to train')
-parser.add_argument('--learning_rate', type=float, required=True,
+parser.add_argument('--learning_rate', type=float, required=True, default=5e-5,
                     help='Learning rate')
 '''wandb
 '''
@@ -76,7 +76,7 @@ argument = parser.parse_args()
 config = Config(argument)
 
 
-class AETrainSession(Network):
+class VAETrainSession(Network):
     def __init__(self, dataloader, model=None, sampler=None):
         super().__init__(config=config, data_loader=dataloader, data_type='train', epoch=1, model=model)
         self._pretrained_epoch = ''
@@ -84,6 +84,8 @@ class AETrainSession(Network):
 
         self.avg_step_loss = 0.0
         self.avg_epoch_loss = 0.0
+        self.prior_model = None
+        self.decoder = None
         self.model_util = ModelUtil(config=config)
         self.visualizer = None
         if config.cuda.dataparallel_mode == 'DistributedDataParallel':
@@ -95,22 +97,30 @@ class AETrainSession(Network):
             self.visualizer = WandbVisualizer(config=config, job_type='train', model=self.model)
 
         self.model.train()
+        self.prior_model.eval()
+        self.decoder.eval()
         for epoch_idx in range(self._epoch - 1, config.network.epoch_num):
             logging.info('Start training epoch %d' % (epoch_idx + 1))
 
             if config.cuda.dataparallel_mode == 'DistributedDataParallel':
                 self.sampler.set_epoch(self._epoch)
 
-            for idx, (inputs_pc, targets, pc_ids) in tqdm(enumerate(self.get_data())):
+            for idx, (inputs_img, inputs_pc, targets, _, _) in tqdm(enumerate(self.get_data())):
                 self.optimizer.zero_grad()
-                latents, predicts = self.model(inputs_pc)
+                with torch.no_grad():
+                    latent_pc, _ = self.prior_model(inputs_pc)
+                latent_img, mu, log_var = self.model(inputs_img)
+                with torch.no_grad():
+                    reconst_imgs = self.decoder(latent_img)
 
-                loss = chamfer_distance_loss(predicts, targets) * config.network.loss_scale_factor
+                kld_loss = KLDLoss(mu, log_var)
+                cd_loss = chamfer_distance_loss(reconst_imgs, targets)
+                loss = kld_loss + cd_loss
 
                 loss.backward()
                 self.optimizer.step()
 
-                self.log_step_loss(loss=loss.item() / config.network.loss_scale_factor, step_idx=idx + 1)
+                self.log_step_loss(loss=loss.item(), step_idx=idx + 1)
                 self.avg_step_loss = 0
 
             # self.save_model()
@@ -122,10 +132,24 @@ class AETrainSession(Network):
 
     def set_model(self):
         models = {'PointNetAE': PointNetAE, 'LMNetAE': LMNetAE, 'LMImgEncoder': LMImgEncoder}
-        self.model = models[config.network.prior_model](config.dataset.resample_amount)
+        '''Img Encoder
+        '''
+        self.model = ImgEncoderVAE(latent_size=config.network.latent_size, z_dim=config.network.z_dim)
         self.model = self.model_util.set_model_device(self.model)
         self.model = self.model_util.set_model_parallel_gpu(self.model)
         self._epoch = self.model_util.load_model_pretrain(self.model, self._pretrained_epoch, self._is_scratch)
+        '''Prior Model
+        '''
+        self.prior_model = models[config.network.prior_model](config.dataset.resample_amount)
+        self.prior_model = self.model_util.set_model_device(self.prior_model)
+        self.prior_model = self.model_util.set_model_parallel_gpu(self.prior_model)
+        self.prior_model = self.model_util.load_prior_model(self.prior_model)
+        '''PC Decoder
+        '''
+        self.decoder = LMDecoder(config.dataset.resample_amount)
+        self.decoder = self.model_util.set_model_device(self.decoder)
+        self.decoder = self.model_util.set_model_parallel_gpu(self.decoder)
+        self.decoder = self.model_util.load_partial_pretrained_model(self.prior_model, self.decoder, 'decoder')
 
     def log_step_loss(self, loss, step_idx):
         self.avg_step_loss += loss
@@ -146,12 +170,12 @@ class AETrainSession(Network):
 
         logging.info('Logging Epoch Loss...')
         if config.wandb.visual_flag:
-            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='cd',
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='CD+KLD',
                                            train_epoch_loss=self.avg_epoch_loss)
             self.avg_epoch_loss = .0
 
 
-def trainAE():
+def trainVAE():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-8s %(message)s',
                         datefmt='%Y-%m-%d %H:%M:%S')
     if (argument.local_rank is not None) and config.cuda.rank[0] == 0:
@@ -167,7 +191,7 @@ def trainAE():
                                       shuffle=True,
                                       pin_memory=True,
                                       num_workers=multiprocessing.cpu_count() * 5)
-        train_session = AETrainSession(dataloader=train_dataloader)
+        train_session = VAETrainSession(dataloader=train_dataloader)
         train_session.train()
 
     elif config.cuda.dataparallel_mode == 'DistributedDataParallel':
@@ -182,9 +206,9 @@ def trainAE():
                                       sampler=train_sampler,
                                       num_workers=8,
                                       worker_init_fn=np.random.seed(0))
-        train_session = AETrainSession(dataloader=train_dataloader, sampler=train_sampler)
+        train_session = VAETrainSession(dataloader=train_dataloader, sampler=train_sampler)
         train_session.train()
 
 
 if __name__ == '__main__':
-    trainAE()
+    trainVAE()

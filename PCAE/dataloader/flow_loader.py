@@ -14,7 +14,7 @@ class FlowDataset(Dataset):
     def __init__(self, config, split_dataset_type: str):
         self.config = config
         self.split_dataset_type = split_dataset_type
-        self.dataset_loader = FlowLoader(split_dataset_type)
+        self.dataset_loader = FlowLoader(config=config, split_dataset_type=split_dataset_type)
 
     def __len__(self):
         return len(self.dataset_loader.ae_latent_paths)
@@ -54,6 +54,7 @@ class FlowLoader:
         self.pc_ids = []
         self.ae_latent_paths = []
         self.lm_latent_paths = []
+        self.latents_path = '/'.join(self.config.network.checkpoint_path.split('/')[:-1])
 
         self.set_split_dataset_path()
         self.load_pc_ids()
@@ -93,8 +94,7 @@ class FlowLoader:
     def load_ae_latents(self):
         #  self.lm_latent_paths shape = [dim_0 = pc_id]
         for pc_id in self.pc_ids:
-            self.ae_latent_paths.append(os.path.join(self.config.network.checkpoint_path +
-                                                     '/{}_ae_latent/'.format(self.split_dataset_type),
+            self.ae_latent_paths.append(os.path.join(self.latents_path + '/{}_ae_latent/'.format(self.split_dataset_type),
                                                      pc_id, 'latent.npy'))
 
     def load_lm_latents(self):
@@ -103,6 +103,5 @@ class FlowLoader:
             id_level = []
             self.ae_latent_paths.append(id_level)
             for idx in range(24):
-                self.ae_latent_paths[-1].append(os.path.join(self.config.network.checkpoint_path +
-                                                             '/{}_lm_latent/'.format(self.split_dataset_type),
+                self.ae_latent_paths[-1].append(os.path.join(self.latents_path + '/{}_lm_latent/'.format(self.split_dataset_type),
                                                              pc_id, str(idx).zfill(2), 'latent.npy'))

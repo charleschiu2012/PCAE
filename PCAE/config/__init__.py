@@ -28,65 +28,56 @@ gc.collect()
 #     torch.backends.cudnn.benchmark = False
 #     torch.backends.cudnn.deterministic = True
 
+usable_gpu_ids = [0, 1, 2, 3, 4, 5, 6, 7]
+
 
 class Config:
     def __init__(self, argument):
         # set_seeds()
         self.home_dir = str(Path.home())
-        # self.data_dir = '/dev/shm/'
         self.tensorboard_dir = self.home_dir + '/tensorboard_runs/'
         self.cuda = CudaConfig(device='cuda' if torch.cuda.is_available() else 'cpu',
                                is_parallel=True,
-                               parallel_gpu_ids=[0, 1, 2, 3, 4, 5, 6, 7],
-                               # parallel_gpu_ids=[0, 1],
-                               dataparallel_mode='DistributedDataParallel')  # Dataparallel DistributedDataParallel
+                               parallel_gpu_ids=usable_gpu_ids[:int(argument.gpu_usage)],
+                               dataparallel_mode=argument.dataparallel_mode)  # Dataparallel DistributedDataParallel
         # OMP_NUM_THREADS=1 python -m torch.distributed.launch --nproc_per_node=8 main.py
 
-        self.dataset = DatasetConfig(dataset_name='LMNet_ShapeNet_PC',
+        self.dataset = DatasetConfig(dataset_name=argument.dataset_name,
                                      dataset_path=self.home_dir + '/data/LMNet-data/',
                                      # sudo mount tmpfs /eva_data/hdd2/charles/Ramdisk/ -t tmpfs -o size=70G
-                                     dataset_size={'train': 35022 * 24, 'test': 8762 * 24, 'valid': 8762 * 24},
-                                     # dataset_size={'train': 50, 'test': 50, 'valid': 50},
-                                     # LM Dataset
-                                     # dataset_size={'train': 35022, 'test': 8762, 'valid': 8762},  # AE Dataset
+                                     dataset_size={'train': argument.train_dataset_size,
+                                                   'test': argument.test_dataset_size,
+                                                   'valid': argument.valid_dataset_size},
                                      resample_amount=2048,
                                      # not_train_class=['airplane', 'bench', 'cabinet']
                                      )
-        # LMNetAE_dataset_size' = {'train': 35022, 'test': 8762, 'valid': 8762}
 
-        self.network = NetworkConfig(mode_flag='lm',  # ae, lm, vae, nice
-                                     img_encoder="ImgEncoderVAE",  # LMImgEncoder ImgEncoderVAE
-                                     prior_model="LMNetAE",  # PointNetAE LMNetAE
-                                     # checkpoint_path=self.home_dir + 'data/LMNet-data/checkpoint/',
-                                     checkpoint_path=self.home_dir + '/data/LMNet-data/checkpoint/DDP',
-                                     # checkpoint_path=self.home_dir + '/data/LMNet-data/checkpoint/DDP/fewer_class',  # unseen class
-                                     prior_epoch='300',
-                                     loss_function='cd',  # emd cd emd+cd l1
-                                     loss_scale_factor=10000,
-                                     batch_size=32,  # ae:32 lm:24
-                                     latent_size=512,
-                                     z_dim=512,
-                                     epoch_num=300,
-                                     optimizer='Adam',
-                                     # learning_rate=5e-4,  # ae
-                                     learning_rate=5e-5,  # lm
-                                     # learning_rate=1e-3,  # nice
-                                     momentum=0.9)
+        self.network = NetworkConfig(mode_flag=argument.mode_flag,  # ae, lm, vae, nice
+                                     img_encoder=argument.img_encoder,  # LMImgEncoder ImgEncoderVAE
+                                     prior_model=argument.prior_model,  # PointNetAE LMNetAE
+                                     checkpoint_path=self.home_dir + argument.checkpoint_path,
+                                     prior_epoch=argument.prior_epoch,
+                                     loss_scale_factor=argument.loss_scale_factor,
+                                     batch_size=argument.batch_size,
+                                     latent_size=argument.latent_size,
+                                     z_dim=argument.z_dim,
+                                     epoch_num=argument.epoch_num,
+                                     learning_rate=argument.learning_rate)
+        if argument.mode_flag == 'nice':
+            self.nice = NICEConfig(batch_size=argument.nice_batch_size,
+                                   latent=argument.latent_distribution,
+                                   mid_dim=argument.mid_dim,
+                                   num_iters=argument.num_iters,
+                                   sample_size=argument.num_sample,
+                                   coupling=argument.coupling,
+                                   mask_config=argument.mask_config)
 
-        self.nice = NICEConfig(batch_size=200,
-                               latent='normal',
-                               mid_dim=128,
-                               num_iters=25000,
-                               sample_size=64,
-                               coupling=4,
-                               mask_config=1.)
-
-        self.wandb = WandbConfig(project_name='PCVAE',
-                                 run_name='{}'.format('VAE'),
+        self.wandb = WandbConfig(project_name=argument.project_name,
+                                 run_name=argument.run_name,
                                  dir_path=self.home_dir + '/PCAE-TWCC/',
-                                 machine_id="TWCC",
-                                 step_loss_freq=500,
-                                 visual_flag=True)
+                                 machine_id=argument.machine_id,
+                                 step_loss_freq=argument.step_loss_freq,
+                                 visual_flag=argument.visual_flag)
 
     def show_config(self):
         print("Config Setting:")
@@ -101,6 +92,3 @@ class Config:
             for k2, v2 in v1.items():
                 print('\t{0}: {1}'.format(k2, v2))
             print()
-
-
-config = Config()

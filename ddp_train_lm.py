@@ -8,9 +8,9 @@ from torch.utils.data import DataLoader
 
 from PCAE.config import Config
 from PCAE.dataloader import PCDataset
-from PCAE.jobs.networks.loss import chamfer_distance_loss, emd_loss
+# from PCAE.jobs.networks.loss import chamfer_distance_loss, emd_loss
 from PCAE.jobs.networks import Network
-from PCAE.jobs.networks.models import PointNetAE, LMNetAE, LMImgEncoder
+from PCAE.jobs.networks.models import PointNetAE, LMNetAE, LMImgEncoder, LMDecoder
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
 
@@ -37,7 +37,7 @@ parser.add_argument('--resample_amount', type=int, required=True, default=2048,
                     help='The num of points to sample from original point cloud')
 '''network
 '''
-parser.add_argument('--mode_flag', type=str, required=True,
+parser.add_argument('--mode_flag', type=str, required=True, default='lm',
                     help='Mode to train')
 parser.add_argument('--img_encoder', type=str, required=True,
                     help='Which Image encoder')
@@ -45,7 +45,7 @@ parser.add_argument('--prior_model', type=str, required=True,
                     help='Which point cloud autoencoder')
 parser.add_argument('--checkpoint_path', type=str, required=True,
                     help='Where to store/load weights')
-parser.add_argument('--prior_epoch', type=str, default='300',
+parser.add_argument('--prior_epoch', type=str, required=True, default='300',
                     help='Which epoch of autoencoder to use to ImgEncoder')
 parser.add_argument('--loss_scale_factor', type=int, required=True, default=10000,
                     help='Scale your loss')
@@ -57,7 +57,7 @@ parser.add_argument('--z_dim', type=int, default=512,
                     help='Size of vae latent')
 parser.add_argument('--epoch_num', type=int, required=True, default=300,
                     help='How many epoch to train')
-parser.add_argument('--learning_rate', type=float, required=True,
+parser.add_argument('--learning_rate', type=float, required=True, default=5e-5,
                     help='Learning rate')
 '''wandb
 '''
@@ -76,14 +76,16 @@ argument = parser.parse_args()
 config = Config(argument)
 
 
-class AETrainSession(Network):
+class LMTrainSession(Network):
     def __init__(self, dataloader, model=None, sampler=None):
         super().__init__(config=config, data_loader=dataloader, data_type='train', epoch=1, model=model)
-        self._pretrained_epoch = ''
+        self._pretrained_epoch = None
         self._is_scratch = False
 
         self.avg_step_loss = 0.0
         self.avg_epoch_loss = 0.0
+        self.prior_model = None
+        self.decoder = None
         self.model_util = ModelUtil(config=config)
         self.visualizer = None
         if config.cuda.dataparallel_mode == 'DistributedDataParallel':
@@ -101,11 +103,12 @@ class AETrainSession(Network):
             if config.cuda.dataparallel_mode == 'DistributedDataParallel':
                 self.sampler.set_epoch(self._epoch)
 
-            for idx, (inputs_pc, targets, pc_ids) in tqdm(enumerate(self.get_data())):
+            for idx, (inputs_img, inputs_pc, targets, _, _) in tqdm(enumerate(self.get_data())):
                 self.optimizer.zero_grad()
-                latents, predicts = self.model(inputs_pc)
-
-                loss = chamfer_distance_loss(predicts, targets) * config.network.loss_scale_factor
+                with torch.no_grad():
+                    latent_pc, _ = self.prior_model(inputs_pc)
+                latent_img = self.model(inputs_img)
+                loss = torch.nn.L1Loss()(latent_img, latent_pc) * config.network.loss_scale_factor
 
                 loss.backward()
                 self.optimizer.step()
@@ -121,11 +124,24 @@ class AETrainSession(Network):
             self.model_util.cleanup()
 
     def set_model(self):
-        models = {'PointNetAE': PointNetAE, 'LMNetAE': LMNetAE, 'LMImgEncoder': LMImgEncoder}
-        self.model = models[config.network.prior_model](config.dataset.resample_amount)
+        """Img Encoder
+        """
+        self.model = LMImgEncoder(config.network.latent_size)
         self.model = self.model_util.set_model_device(self.model)
         self.model = self.model_util.set_model_parallel_gpu(self.model)
         self._epoch = self.model_util.load_model_pretrain(self.model, self._pretrained_epoch, self._is_scratch)
+        '''Prior Model
+        '''
+        self.prior_model = LMNetAE(config.dataset.resample_amount)
+        self.prior_model = self.model_util.set_model_device(self.prior_model)
+        self.prior_model = self.model_util.set_model_parallel_gpu(self.prior_model)
+        self.prior_model = self.model_util.load_prior_model(self.prior_model)
+        '''PC Decoder
+        '''
+        self.decoder = LMDecoder(config.dataset.resample_amount)
+        self.decoder = self.model_util.set_model_device(self.decoder)
+        self.decoder = self.model_util.set_model_parallel_gpu(self.decoder)
+        self.decoder = self.model_util.load_partial_pretrained_model(self.prior_model, self.decoder, 'decoder')
 
     def log_step_loss(self, loss, step_idx):
         self.avg_step_loss += loss
@@ -146,12 +162,12 @@ class AETrainSession(Network):
 
         logging.info('Logging Epoch Loss...')
         if config.wandb.visual_flag:
-            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='cd',
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='L1',
                                            train_epoch_loss=self.avg_epoch_loss)
             self.avg_epoch_loss = .0
 
 
-def trainAE():
+def trainLM():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-8s %(message)s',
                         datefmt='%Y-%m-%d %H:%M:%S')
     if (argument.local_rank is not None) and config.cuda.rank[0] == 0:
@@ -167,7 +183,7 @@ def trainAE():
                                       shuffle=True,
                                       pin_memory=True,
                                       num_workers=multiprocessing.cpu_count() * 5)
-        train_session = AETrainSession(dataloader=train_dataloader)
+        train_session = LMTrainSession(dataloader=train_dataloader)
         train_session.train()
 
     elif config.cuda.dataparallel_mode == 'DistributedDataParallel':
@@ -182,9 +198,9 @@ def trainAE():
                                       sampler=train_sampler,
                                       num_workers=8,
                                       worker_init_fn=np.random.seed(0))
-        train_session = AETrainSession(dataloader=train_dataloader, sampler=train_sampler)
+        train_session = LMTrainSession(dataloader=train_dataloader, sampler=train_sampler)
         train_session.train()
 
 
 if __name__ == '__main__':
-    trainAE()
+    trainLM()

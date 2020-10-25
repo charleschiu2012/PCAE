@@ -16,7 +16,7 @@ class PCDataset(Dataset):
     def __init__(self, config, split_dataset_type: str):
         self.config = config
         self.split_dataset_type = split_dataset_type
-        self.dataset_loader = DatasetLoader(split_dataset_type)
+        self.dataset_loader = DatasetLoader(config=config, split_dataset_type=split_dataset_type)
 
     def __len__(self):
         # assert len(self.dataset_loader.split_render_dataset_path) == \
@@ -24,7 +24,7 @@ class PCDataset(Dataset):
 
         if self.config.network.mode_flag == 'ae':
             return len(self.dataset_loader.pc_paths)
-        elif self.config.network.mode_flag == 'lm':
+        elif (self.config.network.mode_flag == 'lm') or (self.config.network.mode_flag == 'vae'):
             return len(self.dataset_loader.split_render_dataset_path)
 
     def __getitem__(self, item):
@@ -33,7 +33,7 @@ class PCDataset(Dataset):
             target = copy.deepcopy(pc)
 
             return pc, target, pc_id
-        elif self.config.network.mode_flag == 'lm':
+        elif (self.config.network.mode_flag == 'lm') or (self.config.network.mode_flag == 'vae'):
             img, img_id = self.get_img(item)
             pc, pc_id = self.get_pc(item)
             target = copy.deepcopy(pc)
@@ -44,7 +44,7 @@ class PCDataset(Dataset):
         pc_path = None
         if self.config.network.mode_flag == 'ae':
             pc_path = self.dataset_loader.pc_paths[item]
-        elif self.config.network.mode_flag == 'lm':
+        elif (self.config.network.mode_flag == 'lm') or (self.config.network.mode_flag == 'vae'):
             pc_path = self.dataset_loader.split_render_dataset_path[item][0]
         # pc = o3d.io.read_point_cloud(pc_path)
         # assert isinstance(pc, o3d.geometry.PointCloud)
@@ -87,12 +87,12 @@ class DatasetLoader:
         self.split_dataset_path = None
         self.pc_ids = []
         self.pc_paths = []
-        if self.config.network.mode_flag == 'lm':
+        if (self.config.network.mode_flag == 'lm') or (self.config.network.mode_flag == 'vae'):
             self.split_render_dataset_path = []
 
         self.set_split_dataset_path()
         self.load_pc_ids()
-        if self.config.network.mode_flag == 'lm':
+        if (self.config.network.mode_flag == 'lm') or (self.config.network.mode_flag == 'vae'):
             self.pair_pc_img()
 
     def set_split_dataset_path(self):
@@ -139,8 +139,7 @@ class DatasetLoader:
                                     id_with_view[0], 'rendering', id_with_view[1])
             self.split_render_dataset_path.append([pc_path, img_path])
 
-        if self.config.network.mode_flag == 'lm' and \
-                self.config.dataset.get_dataset_num(self.split_dataset_type) < len(self.split_render_dataset_path):
+        if self.config.dataset.get_dataset_num(self.split_dataset_type) < len(self.split_render_dataset_path):
             random.shuffle(self.split_render_dataset_path)
             self.split_render_dataset_path = \
                 self.split_render_dataset_path[:self.config.dataset.get_dataset_num(self.split_dataset_type)]
