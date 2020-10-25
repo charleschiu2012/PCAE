@@ -120,10 +120,10 @@ class NICEValidSession(Network):
             self.decoder.eval()
             with torch.no_grad():
                 for idx, (ae_latents, latent_ids) in tqdm(enumerate(self.get_data())):
-                    z, _ = self.flow.module.f(ae_latents)
+                    z, _ = self.model.module.f(ae_latents)
                     reconst_latents = self.model.module.g(z)
                     l1_loss = torch.nn.L1Loss()(reconst_latents, ae_latents)
-                    self.avg_epoch_l1_loss += l1_loss.item()
+                    self.avg_epoch_loss += l1_loss.item()
 
             self.log_epoch_loss()
             self.avg_epoch_loss = .0

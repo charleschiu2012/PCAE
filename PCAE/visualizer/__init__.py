@@ -92,11 +92,12 @@ class WandbVisualizer:
         # latent_array = latent_array[:num_samples]
         # label_array = label_array[:num_samples]
 
-        num_components = 100
+        num_components = 200
         pca = PCA(n_components=num_components)
         reduced = pca.fit_transform(latent_array)
 
-        tsne = TSNE(n_components=3, perplexity=25.0, n_jobs=multiprocessing.cpu_count() * 5)
+        tsne = TSNE(n_components=3, perplexity=25.0, n_jobs=multiprocessing.cpu_count() * 5,
+                    learning_rate=100, n_iter=7000)
         tsne_result = tsne.fit_transform(reduced)
         tsne_result_scaled = StandardScaler().fit_transform(tsne_result)
         return tsne_result_scaled, label_array

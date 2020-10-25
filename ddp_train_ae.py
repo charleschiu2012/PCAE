@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 
 from PCAE.config import Config
 from PCAE.dataloader import PCDataset
-from PCAE.jobs.networks.loss import chamfer_distance_loss, emd_loss
+from PCAE.jobs.networks.loss import chamfer_distance_loss
 from PCAE.jobs.networks import Network
 from PCAE.jobs.networks.models import PointNetAE, LMNetAE, LMImgEncoder
 from PCAE.visualizer import WandbVisualizer
