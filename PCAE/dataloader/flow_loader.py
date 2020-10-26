@@ -75,6 +75,11 @@ class FlowLoader:
                 self.train_classes = [shapenet_taxonomy.shapenet_category_to_id[class_id]
                                       for class_id in self.config.dataset.train_class]
 
+            if self.config.dataset.test_unseen_flag:
+                for train_class in self.train_classes:
+                    _ = jf.pop(train_class)
+                self.train_classes = list(jf.keys())
+
             for pc_class in self.train_classes:
                 for pc_class_with_id in jf[pc_class]:
                     self.pc_ids.append(pc_class_with_id)

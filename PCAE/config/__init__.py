@@ -42,14 +42,16 @@ class Config:
         # OMP_NUM_THREADS=1 python -m torch.distributed.launch --nproc_per_node=8 main.py
 
         train_class_list = argument.train_half_class.split(', ')
+        dataset_size_list = argument.dataset_size.split('/')
         self.dataset = DatasetConfig(dataset_name=argument.dataset_name,
                                      dataset_path=self.home_dir + '/data/LMNet-data/',
                                      # sudo mount tmpfs /eva_data/hdd2/charles/Ramdisk/ -t tmpfs -o size=70G
-                                     dataset_size={'train': argument.train_dataset_size,
-                                                   'test': argument.test_dataset_size,
-                                                   'valid': argument.valid_dataset_size},
+                                     dataset_size={'train': int(dataset_size_list[0]),
+                                                   'test': int(dataset_size_list[1]),
+                                                   'valid': int(dataset_size_list[2])},
                                      resample_amount=2048,
-                                     train_class=train_class_list
+                                     train_class=train_class_list,
+                                     test_unseen_flag=argument.test_unseen_flag
                                      )
 
         self.network = NetworkConfig(mode_flag=argument.mode_flag,  # ae, lm, vae, nice

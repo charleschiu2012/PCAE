@@ -22,13 +22,13 @@ class PCDataset(Dataset):
         # assert len(self.dataset_loader.split_render_dataset_path) == \
         #        config.dataset.get_dataset_num(self.split_dataset_type)
 
-        if self.config.network.mode_flag == 'ae':
+        if (self.config.network.mode_flag == 'ae') or (self.config.network.mode_flag == 'nice'):
             return len(self.dataset_loader.pc_paths)
         elif (self.config.network.mode_flag == 'lm') or (self.config.network.mode_flag == 'vae'):
             return len(self.dataset_loader.split_render_dataset_path)
 
     def __getitem__(self, item):
-        if self.config.network.mode_flag == 'ae':
+        if (self.config.network.mode_flag == 'ae') or (self.config.network.mode_flag == 'nice'):
             pc, pc_id = self.get_pc(item)
             target = copy.deepcopy(pc)
 
@@ -42,7 +42,7 @@ class PCDataset(Dataset):
 
     def get_pc(self, item):
         pc_path = None
-        if self.config.network.mode_flag == 'ae':
+        if (self.config.network.mode_flag == 'ae') or (self.config.network.mode_flag == 'nice'):
             pc_path = self.dataset_loader.pc_paths[item]
         elif (self.config.network.mode_flag == 'lm') or (self.config.network.mode_flag == 'vae'):
             pc_path = self.dataset_loader.split_render_dataset_path[item][0]
@@ -112,6 +112,11 @@ class DatasetLoader:
                 self.train_classes = [shapenet_taxonomy.shapenet_category_to_id[class_id]
                                       for class_id in self.config.dataset.train_class]
 
+            if self.config.dataset.test_unseen_flag:
+                for train_class in self.train_classes:
+                    _ = jf.pop(train_class)
+                self.train_classes = list(jf.keys())
+
             for pc_class in self.train_classes:
                 for pc_class_with_id in jf[pc_class]:
                     self.pc_ids.append(pc_class_with_id)
@@ -121,7 +126,7 @@ class DatasetLoader:
                 self.pc_ids = \
                     self.pc_ids[:self.config.dataset.get_dataset_num(self.split_dataset_type)]
 
-            if self.config.network.mode_flag == 'ae':
+            if (self.config.network.mode_flag == 'ae') or (self.config.network.mode_flag == 'nice'):
                 for pc_id in self.pc_ids:
                     self.pc_paths.append(os.path.join(self.config.dataset.dataset_path + 'ShapeNet_pointclouds/', pc_id,
                                                       'pointcloud_{}.npy'.format(self.config.dataset.resample_amount)))

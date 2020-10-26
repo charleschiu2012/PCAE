@@ -27,12 +27,8 @@ parser.add_argument("--local_rank", type=int)
 '''
 parser.add_argument('--dataset_name', type=str, required=True, default='LMNet_ShapeNet_PC',
                     help='The name of the dataset')
-parser.add_argument('--train_dataset_size', type=int, required=True,
-                    help='The size of train dataset')
-parser.add_argument('--test_dataset_size', type=int, required=True,
-                    help='The size of test dataset')
-parser.add_argument('--valid_dataset_size', type=int, required=True,
-                    help='The size of valid dataset')
+parser.add_argument('--dataset_size', type=str, required=True,
+                    help='The sizes of split dataset')
 parser.add_argument('--resample_amount', type=int, required=True, default=2048,
                     help='The num of points to sample from original point cloud')
 parser.add_argument('--train_half_class', type=str,

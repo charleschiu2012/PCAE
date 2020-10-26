@@ -1,15 +1,14 @@
 #!/bin/bash
 
 train_class_list="airplane, car, chair, lamp, monitor, rifle, sofa"
+dataset_size="21820/5458/5458"
 
 #python ddp_train_ae.py \ Dataparallel DistributedDataParallel
 OMP_NUM_THREADS=1 python -m torch.distributed.launch --nproc_per_node=8 ddp_train_ae.py \
 --gpu_usage 8 \
 --dataparallel_mode "DistributedDataParallel" \
 --dataset_name "LMNet_ShapeNet_PC" \
---train_dataset_size 21820 \
---test_dataset_size 5458 \
---valid_dataset_size 5458 \
+--dataset_size "$dataset_size" \
 --resample_amount 2048 \
 --train_half_class "$train_class_list" \
 --mode_flag "ae" \

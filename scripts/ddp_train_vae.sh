@@ -1,14 +1,14 @@
 #!/bin/bash
 
+dataset_size="840528/210288/210288"
+
 #python ddp_train_vae.py \ Dataparallel DistributedDataParallel
 #OMP_NUM_THREADS=1 python -m torch.distributed.launch --nproc_per_node=8 ddp_train_vae.py \
 python ddp_train_vae.py \
 --gpu_usage 8 \
 --dataparallel_mode "Dataparallel" \
 --dataset_name "LMNet_ShapeNet_PC" \
---train_dataset_size 840528 \
---test_dataset_size 210288 \
---valid_dataset_size 210288 \
+--dataset_size "$dataset_size" \
 --resample_amount 2048 \
 --mode_flag "vae" \
 --prior_model "LMNetAE" \

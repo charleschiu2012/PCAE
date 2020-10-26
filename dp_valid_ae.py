@@ -21,21 +21,18 @@ parser.add_argument('--gpu_usage', type=int, required=True, default=8,
                     help='How many gpu you want use')
 parser.add_argument('--dataparallel_mode', type=str, required=True,
                     help='Which mode of dataparallel')
-parser.add_argument("--local_rank", type=int)
 '''dataset
 '''
 parser.add_argument('--dataset_name', type=str, required=True, default='LMNet_ShapeNet_PC',
                     help='The name of the dataset')
-parser.add_argument('--train_dataset_size', type=int, required=True,
-                    help='The size of train dataset')
-parser.add_argument('--test_dataset_size', type=int, required=True,
-                    help='The size of test dataset')
-parser.add_argument('--valid_dataset_size', type=int, required=True,
-                    help='The size of valid dataset')
+parser.add_argument('--dataset_size', type=str, required=True,
+                    help='The sizes of split dataset')
 parser.add_argument('--resample_amount', type=int, required=True, default=2048,
                     help='The num of points to sample from original point cloud')
 parser.add_argument('--train_half_class', type=str,
                     help='Train with half of the classes')
+parser.add_argument('--test_unseen_flag', action='store_true',
+                    help='Use this flag to test unseen classes')
 '''network
 '''
 parser.add_argument('--mode_flag', type=str, required=True,
