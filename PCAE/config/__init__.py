@@ -41,7 +41,7 @@ class Config:
                                dataparallel_mode=argument.dataparallel_mode)  # Dataparallel DistributedDataParallel
         # OMP_NUM_THREADS=1 python -m torch.distributed.launch --nproc_per_node=8 main.py
 
-        train_class_list = ''.join(argument.train_half_class).split(', ')
+        train_class_list = argument.train_half_class.split(', ')
         self.dataset = DatasetConfig(dataset_name=argument.dataset_name,
                                      dataset_path=self.home_dir + '/data/LMNet-data/',
                                      # sudo mount tmpfs /eva_data/hdd2/charles/Ramdisk/ -t tmpfs -o size=70G

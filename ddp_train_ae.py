@@ -35,7 +35,7 @@ parser.add_argument('--valid_dataset_size', type=int, required=True,
                     help='The size of valid dataset')
 parser.add_argument('--resample_amount', type=int, required=True, default=2048,
                     help='The num of points to sample from original point cloud')
-parser.add_argument('--train_half_class', type=list,
+parser.add_argument('--train_half_class', type=str,
                     help='Train with half of the classes')
 '''network
 '''

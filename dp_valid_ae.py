@@ -21,29 +21,32 @@ parser.add_argument('--gpu_usage', type=int, required=True, default=8,
                     help='How many gpu you want use')
 parser.add_argument('--dataparallel_mode', type=str, required=True,
                     help='Which mode of dataparallel')
+parser.add_argument("--local_rank", type=int)
 '''dataset
 '''
 parser.add_argument('--dataset_name', type=str, required=True, default='LMNet_ShapeNet_PC',
                     help='The name of the dataset')
-parser.add_argument('--train_dataset_size', type=int, required=True, default=35022,
+parser.add_argument('--train_dataset_size', type=int, required=True,
                     help='The size of train dataset')
-parser.add_argument('--test_dataset_size', type=int, required=True, default=8762,
+parser.add_argument('--test_dataset_size', type=int, required=True,
                     help='The size of test dataset')
-parser.add_argument('--valid_dataset_size', type=int, required=True, default=8762,
+parser.add_argument('--valid_dataset_size', type=int, required=True,
                     help='The size of valid dataset')
 parser.add_argument('--resample_amount', type=int, required=True, default=2048,
                     help='The num of points to sample from original point cloud')
+parser.add_argument('--train_half_class', type=str,
+                    help='Train with half of the classes')
 '''network
 '''
-parser.add_argument('--mode_flag', type=str, required=True, default='ae',
+parser.add_argument('--mode_flag', type=str, required=True,
                     help='Mode to train')
-parser.add_argument('--img_encoder', type=str, required=True, default='LMImgEncoder',
+parser.add_argument('--img_encoder', type=str,
                     help='Which Image encoder')
-parser.add_argument('--prior_model', type=str, required=True, default='LMNetAE',
+parser.add_argument('--prior_model', type=str, required=True,
                     help='Which point cloud autoencoder')
-parser.add_argument('--checkpoint_path', type=str, required=True, default='/data/LMNet-data/checkpoint/DDP/LMNetAE',
+parser.add_argument('--checkpoint_path', type=str, required=True,
                     help='Where to store/load weights')
-parser.add_argument('--prior_epoch', type=str, required=True, default='300',
+parser.add_argument('--prior_epoch', type=str, default='300',
                     help='Which epoch of autoencoder to use to ImgEncoder')
 parser.add_argument('--loss_scale_factor', type=int, required=True, default=10000,
                     help='Scale your loss')
@@ -51,21 +54,21 @@ parser.add_argument('--batch_size', type=int, required=True, default=32,
                     help='Batch size of point cloud or image')
 parser.add_argument('--latent_size', type=int, required=True, default=512,
                     help='Size of latent')
-parser.add_argument('--z_dim', type=int, required=True, default=512,
-                    help='Size of vae latent')  # TODO
+parser.add_argument('--z_dim', type=int, default=512,
+                    help='Size of vae latent')
 parser.add_argument('--epoch_num', type=int, required=True, default=300,
                     help='How many epoch to train')
-parser.add_argument('--learning_rate', type=float, required=True, default=5e-4,
+parser.add_argument('--learning_rate', type=float, required=True,
                     help='Learning rate')
 '''wandb
 '''
-parser.add_argument('--project_name', type=str, required=True, default='PCAE',
+parser.add_argument('--project_name', type=str, required=True,
                     help='Project name to log in wandb')
-parser.add_argument('--run_name', type=str, required=True, default='Autoencoder',
+parser.add_argument('--run_name', type=str, required=True,
                     help='Run name to log under project')
 parser.add_argument('--machine_id',
                     help='Which machine')
-parser.add_argument('--step_loss_freq', type=int, required=True, default=500,
+parser.add_argument('--step_loss_freq', type=int, required=True,
                     help='How many steps for log step loss one time')
 parser.add_argument('--visual_flag', action='store_true',
                     help='Use wandb or not')

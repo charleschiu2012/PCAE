@@ -35,6 +35,8 @@ parser.add_argument('--valid_dataset_size', type=int, required=True,
                     help='The size of valid dataset')
 parser.add_argument('--resample_amount', type=int, required=True, default=2048,
                     help='The num of points to sample from original point cloud')
+parser.add_argument('--train_half_class', type=str,
+                    help='Train with half of the classes')
 '''network
 '''
 parser.add_argument('--mode_flag', type=str, required=True,
@@ -134,7 +136,7 @@ class NICETrainSession(Network):
                 self.log_step_loss(loss=loss.item(), step_idx=idx + 1)
                 self.avg_step_loss = 0
 
-            # self.save_model()
+            self.save_model()
             self.log_epoch_loss()
             self._epoch += 1
 

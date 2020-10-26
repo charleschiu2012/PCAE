@@ -2,10 +2,9 @@
 
 train_class_list="airplane, car, chair, lamp, monitor, rifle, sofa"
 
-#python ddp_train_ae.py \ Dataparallel DistributedDataParallel
-OMP_NUM_THREADS=1 python -m torch.distributed.launch --nproc_per_node=8 ddp_train_ae.py \
+python dp_valid_ae.py \
 --gpu_usage 8 \
---dataparallel_mode "DistributedDataParallel" \
+--dataparallel_mode "Dataparallel" \
 --dataset_name "LMNet_ShapeNet_PC" \
 --train_dataset_size 21820 \
 --test_dataset_size 5458 \
@@ -24,4 +23,4 @@ OMP_NUM_THREADS=1 python -m torch.distributed.launch --nproc_per_node=8 ddp_trai
 --run_name "Autoencoder" \
 --machine_id "TWCC" \
 --step_loss_freq 50 \
-#--visual_flag
+--visual_flag

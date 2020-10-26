@@ -87,7 +87,7 @@ class FlowLoader:
     def load_ae_latents(self):
         #  self.lm_latent_paths shape = [dim_0 = pc_id]
         for pc_id in self.pc_ids:
-            self.ae_latent_paths.append(os.path.join(self.latents_path + '/{}_ae_latent/'.format(self.split_dataset_type),
+            self.ae_latent_paths.append(os.path.join(self.latents_path + '/{}_ae_latent_half_class/'.format(self.split_dataset_type),
                                                      pc_id, 'latent.npy'))
 
     def load_lm_latents(self):
