@@ -157,8 +157,12 @@ class NICEValidSession(Network):
 
         logging.info('Logging Epoch Loss...')
         if config.wandb.visual_flag:
-            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='unseen_NICE',
-                                           valid_epoch_loss=self.avg_epoch_loss)
+            if not config.dataset.test_unseen_flag:
+                self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='NICE',
+                                               valid_epoch_loss=self.avg_epoch_loss)
+            if config.dataset.test_unseen_flag:
+                self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='unseen_NICE',
+                                               valid_epoch_loss=self.avg_epoch_loss)
 
 
 def validNICE():
