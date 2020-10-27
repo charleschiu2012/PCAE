@@ -74,6 +74,8 @@ class FlowLoader:
             if self.config.dataset.train_class is not None:
                 self.train_classes = [shapenet_taxonomy.shapenet_category_to_id[class_id]
                                       for class_id in self.config.dataset.train_class]
+            else:
+                self.train_classes = list(jf.keys())
 
             if self.config.dataset.test_unseen_flag:
                 for train_class in self.train_classes:

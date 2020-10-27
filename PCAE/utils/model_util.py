@@ -86,7 +86,7 @@ class ModelUtil:
         logging.info('Use %s to test' % model_path)
 
     def load_prior_model(self, model):
-        prior_model_path = '../data/LMNet-data/checkpoint/DDP/LMNetAE_half_class/epoch%.3d.pth' % \
+        prior_model_path = '../data/LMNet-data/checkpoint/DDP/LMNetAE/epoch%.3d.pth' % \
                            int(self.config.network.prior_epoch)
         # prior_model_path = '../data/LMNet-data/checkpoint/DDP/LMNetAE/epoch%.3d.pth' % \
         #                    int(self.config.network.prior_epoch)

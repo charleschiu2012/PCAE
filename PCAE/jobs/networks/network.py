@@ -1,6 +1,5 @@
 import os
 import torch
-import numpy as np
 
 
 class Network:
@@ -22,10 +21,9 @@ class Network:
             torch.save(self.model.state_dict(), model_path)
 
     def get_data(self):
-        for i, data in enumerate(self._data_loader):
+        for data in iter(self._data_loader):
             device = self.config.cuda.device
-            if self.config.network.mode_flag == 'ae' or \
-                    (self.config.network.mode_flag == 'nice' and self._data_type == 'valid'):
+            if self.config.network.mode_flag == 'ae' or self.config.network.mode_flag == 'nice':
                 inputs_pc, targets = data[0].to(device).float().permute(0, 2, 1).contiguous(), \
                                      data[1].to(device).float()
                 pc_id = data[2]
@@ -38,11 +36,6 @@ class Network:
 
                 img_id, pc_id = data[3], data[4]
                 yield inputs_img, inputs_pc, targets, img_id, pc_id
-            elif self.config.network.mode_flag == 'nice' and self._data_type == 'train':
-                inputs_latent, latent_ids = torch.from_numpy(np.array(data[0])).to(device).float(), \
-                                            data[1]
-
-                yield inputs_latent, latent_ids
 
     def steps_in_an_epoch(self):
         if self.config.dataset.dataset_size[self._data_type] <= self.config.network.batch_size:

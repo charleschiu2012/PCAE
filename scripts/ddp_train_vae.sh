@@ -21,7 +21,7 @@ python ddp_train_vae.py \
 --z_dim 512 \
 --epoch_num 300 \
 --learning_rate 5e-5 \
---project_name "PCVAE" \
+--project_name "Analogy" \
 --run_name "ImgEncoderVAE" \
 --machine_id "TWCC" \
 --step_loss_freq 1000 \

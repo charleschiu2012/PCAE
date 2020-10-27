@@ -51,16 +51,16 @@ class WandbVisualizer:
         wandb.watch(self._model)
 
     @staticmethod
-    def log_step_loss(step_idx, step_loss):
+    def log_step_loss(step_idx, step_loss, loss_name: str):
         # 'step': If you want to log to a single history step from lots of different places
         # in your code you can pass a step index. Doesn't do with step_idx
-        wandb.log({'step_loss': step_loss, 'step': step_idx})
+        wandb.log({'{}_step_loss'.format(loss_name): step_loss, 'step': step_idx})
 
-    def log_epoch_loss(self, epoch_idx, loss_type: str, train_epoch_loss=None, valid_epoch_loss=None):
+    def log_epoch_loss(self, epoch_idx, loss_name: str, train_epoch_loss=None, valid_epoch_loss=None):
         if self.job_type == 'train':
-            wandb.log({'train_{}_epoch_loss'.format(loss_type): train_epoch_loss, 'epoch': epoch_idx})
+            wandb.log({'train_{}_epoch_loss'.format(loss_name): train_epoch_loss, 'epoch': epoch_idx})
         elif self.job_type == 'valid':
-            wandb.log({'valid_{}_epoch_loss'.format(loss_type): valid_epoch_loss, 'epoch': epoch_idx})
+            wandb.log({'valid_{}_epoch_loss'.format(loss_name): valid_epoch_loss, 'epoch': epoch_idx})
 
     @staticmethod
     def add_tsne_data(latent_list, latent_data):

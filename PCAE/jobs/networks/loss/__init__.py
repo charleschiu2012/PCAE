@@ -34,7 +34,7 @@ def chamfer_distance_loss(s1: torch.Tensor, s2: torch.Tensor, w1: float = 1.0, w
     assert (s1.shape[2] == 3), '3rd dimension of input must be 3(xyz)'
     # input_dim = B*N*3
 
-    loss = torch.tensor([.0], requires_grad=False).cuda()
+    loss = torch.tensor(.0, requires_grad=False).cuda()
     for predict_pc, target_pc in zip(s1, s2):
         cd_loss = chamfer_distance(S1=predict_pc, S2=target_pc, w1=w1, w2=w2)
         loss += cd_loss

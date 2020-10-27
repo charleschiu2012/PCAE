@@ -19,7 +19,7 @@ OMP_NUM_THREADS=1 python -m torch.distributed.launch --nproc_per_node=8 ddp_trai
 --latent_size 512 \
 --epoch_num 300 \
 --learning_rate 5e-5 \
---project_name "PCAE" \
+--project_name "Analogy" \
 --run_name "ImgEncoder" \
 --machine_id "TWCC" \
 --step_loss_freq 1000 \

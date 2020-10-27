@@ -31,6 +31,10 @@ parser.add_argument('--dataset_size', type=str, required=True,
                     help='The sizes of split dataset')
 parser.add_argument('--resample_amount', type=int, required=True, default=2048,
                     help='The num of points to sample from original point cloud')
+parser.add_argument('--train_half_class', type=str,
+                    help='Train with half of the classes')
+parser.add_argument('--test_unseen_flag', action='store_true',
+                    help='Use this flag to test unseen classes')
 '''network
 '''
 parser.add_argument('--mode_flag', type=str, required=True, default='lm',

@@ -1,14 +1,15 @@
 import argparse
 import logging
-from tqdm import tqdm
 import torch
+import numpy as np
 from torch.utils.data import DataLoader
 import torch.distributions as distributions
 
 from PCAE.config import Config
 from PCAE.dataloader import PCDataset
 from PCAE.jobs.networks import Network
-from PCAE.jobs.networks.models import LMNetAE, LMDecoder, NICE
+from PCAE.jobs.networks.models import NiceAE
+from PCAE.jobs.networks.loss import chamfer_distance_loss
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
 
@@ -20,6 +21,7 @@ parser.add_argument('--gpu_usage', type=int, required=True, default=8,
                     help='How many gpu you want use')
 parser.add_argument('--dataparallel_mode', type=str, required=True,
                     help='Which mode of dataparallel')
+parser.add_argument("--local_rank", type=int)
 '''dataset
 '''
 parser.add_argument('--dataset_name', type=str, required=True, default='LMNet_ShapeNet_PC',
@@ -38,11 +40,11 @@ parser.add_argument('--mode_flag', type=str, required=True,
                     help='Mode to train')
 parser.add_argument('--img_encoder', type=str,
                     help='Which Image encoder')
-parser.add_argument('--prior_model', type=str, required=True,
+parser.add_argument('--prior_model', type=str,
                     help='Which point cloud autoencoder')
 parser.add_argument('--checkpoint_path', type=str, required=True,
                     help='Where to store/load weights')
-parser.add_argument('--prior_epoch', type=str, default='300',
+parser.add_argument('--prior_epoch', type=str,
                     help='Which epoch of autoencoder to use to ImgEncoder')
 parser.add_argument('--loss_scale_factor', type=int, required=True, default=10000,
                     help='Scale your loss')
@@ -54,7 +56,7 @@ parser.add_argument('--z_dim', type=int, default=512,
                     help='Size of vae latent')
 parser.add_argument('--epoch_num', type=int, required=True, default=300,
                     help='How many epoch to train')
-parser.add_argument('--learning_rate', type=float, required=True,
+parser.add_argument('--learning_rate', type=float, required=True, default=5e-5,
                     help='Learning rate')
 '''nice
 '''
@@ -89,29 +91,32 @@ argument = parser.parse_args()
 config = Config(argument)
 
 
-class NICEValidSession(Network):
+class NICEAEValidSession(Network):
     def __init__(self, dataloader, model=None):
         super().__init__(config=config, data_loader=dataloader, data_type='valid', epoch=1, model=model)
         self._epoch_of_model = ''
         self._epoch = 0
 
         self.avg_epoch_loss = 0.0
+        self.avg_epoch_cd_loss = 0.0
+        self.avg_epoch_log_prob_loss = 0.0
         self.prior_model = None
-        # self.decoder = None
+        self.decoder = None
         self.model_util = ModelUtil(config=config)
         self.models_path = self.model_util.get_models_path(config.network.checkpoint_path)
-        self.visualizer = WandbVisualizer(config=config, job_type='valid',
-                                          model=NICE(prior=self.prior,
-                                                     coupling=config.nice.coupling,
-                                                     in_out_dim=self.full_dim,
-                                                     mid_dim=config.nice.mid_dim,
-                                                     hidden=self.hidden,
-                                                     mask_config=config.nice.mask_config))
 
         self.full_dim = 512
         self.hidden = 5
         if config.nice.latent == 'normal':
             self.prior = torch.distributions.Normal(torch.tensor(0.).cuda(), torch.tensor(1.).cuda())
+        self.visualizer = WandbVisualizer(config=config, job_type='valid',
+                                          model=NiceAE(prior=self.prior,
+                                                       coupling=config.nice.coupling,
+                                                       in_out_dim=self.full_dim,
+                                                       mid_dim=config.nice.mid_dim,
+                                                       hidden=self.hidden,
+                                                       mask_config=config.nice.mask_config,
+                                                       num_points=config.dataset.resample_amount))
 
     def validate(self):
         for i, model_path in enumerate(self.models_path):
@@ -120,59 +125,70 @@ class NICEValidSession(Network):
             self.model_util.test_trained_model(model=self.model, test_epoch=i + 1)
 
             self.model.eval()
-            self.prior_model.eval()
-            # self.decoder.eval()
             with torch.no_grad():
-                for idx, (inputs_pc, targets, pc_ids) in tqdm(enumerate(self.get_data())):
-                    ae_latents, reconst_pcs = self.prior_model(inputs_pc)
+                final_step = 0
+                for idx, (inputs_pc, targets, pc_ids) in enumerate(self.get_data()):
+                    final_step = idx
+                    log_prob_loss, predictions = self.model(inputs_pc)
 
-                    z, _ = self.model.module.f(ae_latents)
-                    reconst_latents = self.model.module.g(z)
-                    l1_loss = torch.nn.L1Loss()(reconst_latents, ae_latents)
-                    self.avg_epoch_loss += l1_loss.item()
+                    cd_loss = chamfer_distance_loss(predictions, targets) * config.network.loss_scale_factor
+                    log_prob_loss = log_prob_loss.mean()
+                    loss = log_prob_loss + cd_loss
+                    self.avg_epoch_loss += loss.item()
+                    self.avg_epoch_cd_loss += cd_loss.item()
+                    self.avg_epoch_log_prob_loss += log_prob_loss.item()
 
-            self.log_epoch_loss()
-            self.avg_epoch_loss = .0
+                logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
+                self.log_epoch_loss()
+                self.avg_epoch_loss = .0
+                self.avg_epoch_cd_loss = .0
+                self.avg_epoch_log_prob_loss = .0
 
     def set_model(self):
-        self.model = NICE(prior=self.prior,
-                          coupling=config.nice.coupling,
-                          in_out_dim=self.full_dim,
-                          mid_dim=config.nice.mid_dim,
-                          hidden=self.hidden,
-                          mask_config=config.nice.mask_config)
+        self.model = NiceAE(prior=self.prior,
+                            coupling=config.nice.coupling,
+                            in_out_dim=self.full_dim,
+                            mid_dim=config.nice.mid_dim,
+                            hidden=self.hidden,
+                            mask_config=config.nice.mask_config,
+                            num_points=config.dataset.resample_amount)
         self.model = self.model_util.set_model_device(self.model)
         self.model = self.model_util.set_model_parallel_gpu(self.model)
-        '''Prior Model
-        '''
-        self.prior_model = LMNetAE(config.dataset.resample_amount)
-        self.prior_model = self.model_util.set_model_device(self.prior_model)
-        self.prior_model = self.model_util.set_model_parallel_gpu(self.prior_model)
-        self.prior_model = self.model_util.load_prior_model(self.prior_model)
-        # '''PC Decoder
-        # '''
-        # self.decoder = LMDecoder(config.dataset.resample_amount)
-        # self.decoder = self.model_util.set_model_device(self.decoder)
-        # self.decoder = self.model_util.set_model_parallel_gpu(self.decoder)
-        # self.decoder = self.model_util.load_partial_pretrained_model(self.prior_model, self.decoder, 'decoder')
 
     def log_epoch_loss(self):
         self.avg_epoch_loss /= config.dataset.dataset_size[self._data_type]
+        self.avg_epoch_cd_loss /= config.dataset.dataset_size[self._data_type]
+        self.avg_epoch_log_prob_loss /= config.dataset.dataset_size[self._data_type]
 
         logging.info('Logging Epoch Loss...')
-        if config.wandb.visual_flag:
-            if not config.dataset.test_unseen_flag:
-                self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='NICE',
-                                               valid_epoch_loss=self.avg_epoch_loss)
-            if config.dataset.test_unseen_flag:
-                self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='unseen_NICE',
-                                               valid_epoch_loss=self.avg_epoch_loss)
+        if ((argument.local_rank is not None) and config.cuda.rank[0] == 0) and config.wandb.visual_flag:
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='sum',
+                                           valid_epoch_loss=self.avg_epoch_loss)
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='cd',
+                                           valid_epoch_loss=self.avg_epoch_cd_loss)
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='log_prob',
+                                           valid_epoch_loss=self.avg_epoch_log_prob_loss)
+
+        elif (argument.local_rank is None) and config.wandb.visual_flag:
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='sum',
+                                           valid_epoch_loss=self.avg_epoch_loss)
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='cd',
+                                           valid_epoch_loss=self.avg_epoch_cd_loss)
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='log_prob',
+                                           valid_epoch_loss=self.avg_epoch_log_prob_loss)
 
 
-def validNICE():
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-8s %(message)s',
-                        datefmt='%Y-%m-%d %H:%M:%S')
-    config.show_config()
+def validateNICEAE():
+    if (argument.local_rank is not None) and config.cuda.rank[0] == 0:
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-8s %(message)s',
+                            datefmt='%Y-%m-%d %H:%M:%S')
+    elif argument.local_rank is None:
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-8s %(message)s',
+                            datefmt='%Y-%m-%d %H:%M:%S')
+    if (argument.local_rank is not None) and config.cuda.rank[0] == 0:
+        config.show_config()
+    elif argument.local_rank is None:
+        config.show_config()
 
     valid_dataset = PCDataset(config=config, split_dataset_type='valid')
 
@@ -180,10 +196,10 @@ def validNICE():
                                   batch_size=config.network.batch_size,
                                   shuffle=False,
                                   pin_memory=True,
-                                  num_workers=10)
-    valid_session = NICEValidSession(dataloader=valid_dataloader)
+                                  num_workers=15)
+    valid_session = NICEAEValidSession(dataloader=valid_dataloader)
     valid_session.validate()
 
 
 if __name__ == '__main__':
-    validNICE()
+    validateNICEAE()

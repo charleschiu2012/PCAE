@@ -1,16 +1,15 @@
 import argparse
 import logging
-import multiprocessing
-from tqdm import tqdm
 import torch
 import numpy as np
 from torch.utils.data import DataLoader
 import torch.distributions as distributions
 
 from PCAE.config import Config
-from PCAE.dataloader import FlowDataset
+from PCAE.dataloader import PCDataset
 from PCAE.jobs.networks import Network
-from PCAE.jobs.networks.models import LMNetAE, LMDecoder, NICE
+from PCAE.jobs.networks.models import NiceAE
+from PCAE.jobs.networks.loss import chamfer_distance_loss
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
 
@@ -39,13 +38,13 @@ parser.add_argument('--test_unseen_flag', action='store_true',
 '''
 parser.add_argument('--mode_flag', type=str, required=True,
                     help='Mode to train')
-parser.add_argument('--img_encoder', type=str, required=True,
+parser.add_argument('--img_encoder', type=str,
                     help='Which Image encoder')
-parser.add_argument('--prior_model', type=str, required=True,
+parser.add_argument('--prior_model', type=str,
                     help='Which point cloud autoencoder')
 parser.add_argument('--checkpoint_path', type=str, required=True,
                     help='Where to store/load weights')
-parser.add_argument('--prior_epoch', type=str, required=True, default='300',
+parser.add_argument('--prior_epoch', type=str,
                     help='Which epoch of autoencoder to use to ImgEncoder')
 parser.add_argument('--loss_scale_factor', type=int, required=True, default=10000,
                     help='Scale your loss')
@@ -66,7 +65,7 @@ parser.add_argument('--nice_batch_size', type=int, required=True, default=200,
 parser.add_argument('--latent_distribution', type=str, required=True, default='normal',
                     help='Prior distribution for NICE')
 parser.add_argument('--mid_dim', type=int, required=True, default=128,
-                    help='mid_dim')  #TODO
+                    help='mid_dim')  # TODO
 parser.add_argument('--num_iters', type=int, required=True, default=25000,
                     help='Number of iterations')
 parser.add_argument('--num_sample', type=int, required=True, default=64,
@@ -74,7 +73,7 @@ parser.add_argument('--num_sample', type=int, required=True, default=64,
 parser.add_argument('--coupling', type=int, required=True, default=4,
                     help='Number of coupling layers')
 parser.add_argument('--mask_config', type=float, required=True, default=1.,
-                    help='mask_config')  #TODO
+                    help='mask_config')  # TODO
 '''wandb
 '''
 parser.add_argument('--project_name', type=str, required=True,
@@ -92,7 +91,7 @@ argument = parser.parse_args()
 config = Config(argument)
 
 
-class NICETrainSession(Network):
+class NICEAETrainSession(Network):
     def __init__(self, dataloader, model=None, sampler=None):
         super().__init__(config=config, data_loader=dataloader, data_type='train', epoch=1, model=model)
         self._pretrained_epoch = ''
@@ -100,6 +99,10 @@ class NICETrainSession(Network):
 
         self.avg_step_loss = 0.0
         self.avg_epoch_loss = 0.0
+        self.avg_step_cd_loss = 0.0
+        self.avg_epoch_cd_loss = 0.0
+        self.avg_step_log_prob_loss = 0.0
+        self.avg_epoch_log_prob_loss = 0.0
         self.prior_model = None
         self.decoder = None
         self.model_util = ModelUtil(config=config)
@@ -126,16 +129,28 @@ class NICETrainSession(Network):
             if config.cuda.dataparallel_mode == 'DistributedDataParallel':
                 self.sampler.set_epoch(self._epoch)
 
-            for idx, (ae_latents, latent_ids) in tqdm(enumerate(self.get_data())):
+            final_step = 0
+            for idx, (inputs_pc, targets, pc_ids) in enumerate(self.get_data()):
+                final_step = idx
                 self.optimizer.zero_grad()
-                loss = -self.model(ae_latents).mean()
+                log_prob_loss, predictions = self.model(inputs_pc)
+
+                cd_loss = chamfer_distance_loss(predictions, targets) * config.network.loss_scale_factor
+                log_prob_loss = log_prob_loss.mean()
+                loss = log_prob_loss + cd_loss
 
                 loss.backward()
                 self.optimizer.step()
 
-                self.log_step_loss(loss=loss.item(), step_idx=idx + 1)
-                self.avg_step_loss = 0
+                self.log_step_loss(sum_loss=loss.item(),
+                                   cd_loss=cd_loss.item(),
+                                   log_prob_loss=log_prob_loss.item(),
+                                   step_idx=idx + 1)
+                self.avg_step_loss = .0
+                self.avg_step_cd_loss = .0
+                self.avg_step_log_prob_loss = .0
 
+            logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
             self.save_model()
             self.log_epoch_loss()
             self._epoch += 1
@@ -144,67 +159,93 @@ class NICETrainSession(Network):
             self.model_util.cleanup()
 
     def set_model(self):
-        self.model = NICE(prior=self.prior,
-                          coupling=config.nice.coupling,
-                          in_out_dim=self.full_dim,
-                          mid_dim=config.nice.mid_dim,
-                          hidden=self.hidden,
-                          mask_config=config.nice.mask_config)
+        self.model = NiceAE(prior=self.prior,
+                            coupling=config.nice.coupling,
+                            in_out_dim=self.full_dim,
+                            mid_dim=config.nice.mid_dim,
+                            hidden=self.hidden,
+                            mask_config=config.nice.mask_config,
+                            num_points=config.dataset.resample_amount)
         self.model = self.model_util.set_model_device(self.model)
         self.model = self.model_util.set_model_parallel_gpu(self.model)
         self._epoch = self.model_util.load_model_pretrain(self.model, self._pretrained_epoch, self._is_scratch)
-        # '''Prior Model
-        # '''
-        # self.prior_model = LMNetAE(config.dataset.resample_amount)
-        # self.prior_model = self.model_util.set_model_device(self.prior_model)
-        # self.prior_model = self.model_util.set_model_parallel_gpu(self.prior_model)
-        # self.prior_model = self.model_util.load_prior_model(self.prior_model)
-        # '''PC Decoder
-        # '''
-        # self.decoder = LMDecoder(config.dataset.resample_amount)
-        # self.decoder = self.model_util.set_model_device(self.decoder)
-        # self.decoder = self.model_util.set_model_parallel_gpu(self.decoder)
-        # self.decoder = self.model_util.load_partial_pretrained_model(self.prior_model, self.decoder, 'decoder')
 
-    def log_step_loss(self, loss, step_idx):
-        self.avg_step_loss += loss
-        self.avg_epoch_loss += loss
+    def log_step_loss(self, sum_loss, cd_loss, log_prob_loss, step_idx):
+        self.avg_step_loss += sum_loss
+        self.avg_epoch_loss += sum_loss
+        self.avg_step_cd_loss += cd_loss
+        self.avg_epoch_cd_loss += cd_loss
+        self.avg_step_log_prob_loss += log_prob_loss
+        self.avg_epoch_log_prob_loss += log_prob_loss
 
         if step_idx % config.wandb.step_loss_freq == 0:
             self.avg_step_loss /= config.wandb.step_loss_freq
+            self.avg_step_cd_loss /= config.wandb.step_loss_freq
+            self.avg_step_log_prob_loss /= config.wandb.step_loss_freq
             logging.info('Epoch %d, %d Step, loss = %.6f' % (self._epoch, step_idx, self.avg_step_loss))
 
             if ((argument.local_rank is not None) and config.cuda.rank[0] == 0) and config.wandb.visual_flag:
-                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss)
+                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss,
+                                              loss_name='sum')
+                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_cd_loss,
+                                              loss_name='cd')
+                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_log_prob_loss,
+                                              loss_name='log_prob')
             elif (argument.local_rank is None) and config.wandb.visual_flag:
-                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss)
+                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss,
+                                              loss_name='sum')
+                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_cd_loss,
+                                              loss_name='cd')
+                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_log_prob_loss,
+                                              loss_name='log_prob')
 
     def log_epoch_loss(self):
         if config.cuda.dataparallel_mode == 'Dataparallel':
             self.avg_epoch_loss /= config.dataset.dataset_size[self._data_type]
+            self.avg_epoch_cd_loss /= config.dataset.dataset_size[self._data_type]
+            self.avg_epoch_log_prob_loss /= config.dataset.dataset_size[self._data_type]
         elif config.cuda.dataparallel_mode == 'DistributedDataParallel':
             self.avg_epoch_loss /= (config.dataset.dataset_size[self._data_type] / len(config.cuda.parallel_gpu_ids))
+            self.avg_epoch_cd_loss /= (config.dataset.dataset_size[self._data_type] / len(config.cuda.parallel_gpu_ids))
+            self.avg_epoch_log_prob_loss /= (config.dataset.dataset_size[self._data_type] /
+                                             len(config.cuda.parallel_gpu_ids))
 
         logging.info('Logging Epoch Loss...')
         if ((argument.local_rank is not None) and config.cuda.rank[0] == 0) and config.wandb.visual_flag:
-            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='NICE',
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='sum',
                                            train_epoch_loss=self.avg_epoch_loss)
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='cd',
+                                           train_epoch_loss=self.avg_epoch_cd_loss)
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='log_prob',
+                                           train_epoch_loss=self.avg_epoch_log_prob_loss)
             self.avg_epoch_loss = .0
+            self.avg_epoch_cd_loss = .0
+            self.avg_epoch_log_prob_loss = .0
         elif (argument.local_rank is None) and config.wandb.visual_flag:
-            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='NICE',
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='sum',
                                            train_epoch_loss=self.avg_epoch_loss)
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='cd',
+                                           train_epoch_loss=self.avg_epoch_cd_loss)
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='log_prob',
+                                           train_epoch_loss=self.avg_epoch_log_prob_loss)
             self.avg_epoch_loss = .0
+            self.avg_epoch_cd_loss = .0
+            self.avg_epoch_log_prob_loss = .0
 
 
-def trainNICE():
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-8s %(message)s',
-                        datefmt='%Y-%m-%d %H:%M:%S')
+def trainNICEAE():
+    if (argument.local_rank is not None) and config.cuda.rank[0] == 0:
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-8s %(message)s',
+                            datefmt='%Y-%m-%d %H:%M:%S')
+    elif argument.local_rank is None:
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-8s %(message)s',
+                            datefmt='%Y-%m-%d %H:%M:%S')
     if (argument.local_rank is not None) and config.cuda.rank[0] == 0:
         config.show_config()
     elif argument.local_rank is None:
         config.show_config()
 
-    train_dataset = FlowDataset(config=config, split_dataset_type='train')
+    train_dataset = PCDataset(config=config, split_dataset_type='train')
 
     if config.cuda.dataparallel_mode == 'Dataparallel':
         train_dataloader = DataLoader(dataset=train_dataset,
@@ -212,7 +253,7 @@ def trainNICE():
                                       shuffle=True,
                                       pin_memory=True,
                                       num_workers=15)
-        train_session = NICETrainSession(dataloader=train_dataloader)
+        train_session = NICEAETrainSession(dataloader=train_dataloader)
         train_session.train()
 
     elif config.cuda.dataparallel_mode == 'DistributedDataParallel':
@@ -227,9 +268,9 @@ def trainNICE():
                                       sampler=train_sampler,
                                       num_workers=15,
                                       worker_init_fn=np.random.seed(0))
-        train_session = NICETrainSession(dataloader=train_dataloader, sampler=train_sampler)
+        train_session = NICEAETrainSession(dataloader=train_dataloader, sampler=train_sampler)
         train_session.train()
 
 
 if __name__ == '__main__':
-    trainNICE()
+    trainNICEAE()
