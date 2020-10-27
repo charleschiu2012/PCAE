@@ -1,7 +1,7 @@
 #!/bin/bash
 
 train_class_list="airplane, car, chair, lamp, monitor, rifle, sofa"
-dataset_size="21820/5458/5458"
+dataset_size="13202/3304/3304"
 
 python dp_valid_nice.py \
 --gpu_usage 1 \
@@ -31,4 +31,5 @@ python dp_valid_nice.py \
 --run_name "NICE_half_class" \
 --machine_id "TWCC" \
 --step_loss_freq 50 \
---visual_flag
+--visual_flag \
+--test_unseen_flag

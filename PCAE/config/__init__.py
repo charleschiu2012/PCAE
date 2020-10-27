@@ -51,8 +51,7 @@ class Config:
                                                    'valid': int(dataset_size_list[2])},
                                      resample_amount=2048,
                                      train_class=train_class_list,
-                                     test_unseen_flag=argument.test_unseen_flag
-                                     )
+                                     test_unseen_flag=argument.test_unseen_flag)
 
         self.network = NetworkConfig(mode_flag=argument.mode_flag,  # ae, lm, vae, nice
                                      img_encoder=argument.img_encoder,  # LMImgEncoder ImgEncoderVAE

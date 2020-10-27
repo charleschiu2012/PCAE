@@ -89,7 +89,9 @@ class VAETrainSession(Network):
 
     def train(self):
         self.set_model()
-        if config.wandb.visual_flag:
+        if ((argument.local_rank is not None) and config.cuda.rank[0] == 0) and config.wandb.visual_flag:
+            self.visualizer = WandbVisualizer(config=config, job_type='train', model=self.model)
+        elif (argument.local_rank is None) and config.wandb.visual_flag:
             self.visualizer = WandbVisualizer(config=config, job_type='train', model=self.model)
 
         self.model.train()
@@ -155,7 +157,9 @@ class VAETrainSession(Network):
             self.avg_step_loss /= config.wandb.step_loss_freq
             logging.info('Epoch %d, %d Step, loss = %.6f' % (self._epoch, step_idx, self.avg_step_loss))
 
-            if config.wandb.visual_flag:
+            if ((argument.local_rank is not None) and config.cuda.rank[0] == 0) and config.wandb.visual_flag:
+                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss)
+            elif (argument.local_rank is None) and config.wandb.visual_flag:
                 self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss)
 
     def log_epoch_loss(self):
@@ -165,7 +169,11 @@ class VAETrainSession(Network):
             self.avg_epoch_loss /= (config.dataset.dataset_size[self._data_type] / len(config.cuda.parallel_gpu_ids))
 
         logging.info('Logging Epoch Loss...')
-        if config.wandb.visual_flag:
+        if ((argument.local_rank is not None) and config.cuda.rank[0] == 0) and config.wandb.visual_flag:
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='CD+KLD',
+                                           train_epoch_loss=self.avg_epoch_loss)
+            self.avg_epoch_loss = .0
+        elif (argument.local_rank is None) and config.wandb.visual_flag:
             self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='CD+KLD',
                                            train_epoch_loss=self.avg_epoch_loss)
             self.avg_epoch_loss = .0
