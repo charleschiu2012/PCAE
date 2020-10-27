@@ -165,7 +165,7 @@ def validLM():
                                   batch_size=config.network.batch_size,
                                   shuffle=False,
                                   pin_memory=True,
-                                  num_workers=multiprocessing.cpu_count() * 5)
+                                  num_workers=15)
     train_session = LMValidSession(dataloader=valid_dataloader)
     train_session.validate()
 

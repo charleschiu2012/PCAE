@@ -165,7 +165,7 @@ def validVAE():
                                   batch_size=config.network.batch_size,
                                   shuffle=False,
                                   pin_memory=True,
-                                  num_workers=multiprocessing.cpu_count() * 5)
+                                  num_workers=15)
     valid_session = VAEValidSession(dataloader=valid_dataloader)
     valid_session.validate()
 

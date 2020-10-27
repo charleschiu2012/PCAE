@@ -176,7 +176,7 @@ def validNICE():
                                   batch_size=config.network.batch_size,
                                   shuffle=False,
                                   pin_memory=True,
-                                  num_workers=15)
+                                  num_workers=10)
     valid_session = NICEValidSession(dataloader=valid_dataloader)
     valid_session.validate()
 

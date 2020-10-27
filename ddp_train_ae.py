@@ -172,7 +172,7 @@ def trainAE():
                                       batch_size=config.network.batch_size,
                                       shuffle=True,
                                       pin_memory=True,
-                                      num_workers=multiprocessing.cpu_count() * 5)
+                                      num_workers=15)
         train_session = AETrainSession(dataloader=train_dataloader)
         train_session.train()
 
@@ -186,7 +186,7 @@ def trainAE():
                                       shuffle=(train_sampler is None),
                                       pin_memory=True,
                                       sampler=train_sampler,
-                                      num_workers=8,
+                                      num_workers=15,
                                       worker_init_fn=np.random.seed(0))
         train_session = AETrainSession(dataloader=train_dataloader, sampler=train_sampler)
         train_session.train()
