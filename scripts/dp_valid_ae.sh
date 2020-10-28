@@ -10,7 +10,7 @@ python dp_valid_ae.py \
 --resample_amount 2048 \
 --mode_flag "ae" \
 --prior_model "LMNetAE" \
---checkpoint_path "/data/LMNet-data/checkpoint/DDP/LMNetAE_half_class" \
+--checkpoint_path "/data/LMNet-data/checkpoint/DDP/LMNetAE" \
 --loss_scale_factor 10000 \
 --batch_size 32 \
 --latent_size 512 \

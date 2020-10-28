@@ -11,7 +11,7 @@ python dp_valid_nice.py \
 --mode_flag "nice" \
 --prior_model "LMNetAE" \
 --img_encoder "LMImgEncoder" \
---checkpoint_path "/data/LMNet-data/checkpoint/DDP/NICE_half_class" \
+--checkpoint_path "/data/LMNet-data/checkpoint/DDP/NICE" \
 --prior_epoch "" \
 --loss_scale_factor 10000 \
 --batch_size 32 \
