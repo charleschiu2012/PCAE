@@ -1,7 +1,5 @@
 import argparse
 import logging
-import multiprocessing
-from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader
 
@@ -100,8 +98,10 @@ class LMValidSession(Network):
             self.model.eval()
             self.prior_model.eval()
             self.decoder.eval()
+            final_step = 0
             with torch.no_grad():
-                for idx, (inputs_img, inputs_pc, targets, _, _) in tqdm(enumerate(self.get_data())):
+                for idx, (inputs_img, inputs_pc, targets, _, _) in enumerate(self.get_data()):
+                    final_step = idx
                     latent_img = self.model(inputs_img)
                     latent_pc, _ = self.prior_model(inputs_pc)
                     l1_loss = torch.nn.L1Loss()(latent_img, latent_pc) * config.network.loss_scale_factor
@@ -113,6 +113,7 @@ class LMValidSession(Network):
                     self.avg_epoch_cd_loss += cd_loss.item()
                     self.avg_epoch_emd_loss += _emd_loss.item()
 
+            logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
             self.log_epoch_loss()
             self.avg_epoch_l1_loss = .0
             self.avg_epoch_cd_loss = .0
@@ -146,11 +147,11 @@ class LMValidSession(Network):
 
         logging.info('Logging Epoch Loss...')
         if config.wandb.visual_flag:
-            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='L1',
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='L1',
                                            valid_epoch_loss=self.avg_epoch_l1_loss)
-            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='cd',
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='cd',
                                            valid_epoch_loss=self.avg_epoch_cd_loss)
-            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='emd',
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='emd',
                                            valid_epoch_loss=self.avg_epoch_emd_loss)
 
 
@@ -164,8 +165,8 @@ def validLM():
     valid_dataloader = DataLoader(dataset=valid_dataset,
                                   batch_size=config.network.batch_size,
                                   shuffle=False,
-                                  pin_memory=True,
-                                  num_workers=15)
+                                  pin_memory=False,
+                                  num_workers=43)
     train_session = LMValidSession(dataloader=valid_dataloader)
     train_session.validate()
 

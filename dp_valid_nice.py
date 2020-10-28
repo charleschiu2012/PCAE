@@ -1,6 +1,5 @@
 import argparse
 import logging
-from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader
 import torch.distributions as distributions
@@ -122,8 +121,10 @@ class NICEValidSession(Network):
             self.model.eval()
             self.prior_model.eval()
             # self.decoder.eval()
+            final_step = 0
             with torch.no_grad():
-                for idx, (inputs_pc, targets, pc_ids) in tqdm(enumerate(self.get_data())):
+                for idx, (inputs_pc, targets, pc_ids) in enumerate(self.get_data()):
+                    final_step = idx
                     ae_latents, reconst_pcs = self.prior_model(inputs_pc)
 
                     z, _ = self.model.module.f(ae_latents)
@@ -131,6 +132,7 @@ class NICEValidSession(Network):
                     l1_loss = torch.nn.L1Loss()(reconst_latents, ae_latents)
                     self.avg_epoch_loss += l1_loss.item()
 
+            logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
             self.log_epoch_loss()
             self.avg_epoch_loss = .0
 
@@ -162,10 +164,10 @@ class NICEValidSession(Network):
         logging.info('Logging Epoch Loss...')
         if config.wandb.visual_flag:
             if not config.dataset.test_unseen_flag:
-                self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='NICE',
+                self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='log_prob',
                                                valid_epoch_loss=self.avg_epoch_loss)
             if config.dataset.test_unseen_flag:
-                self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='unseen_NICE',
+                self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='unseen_log_prob',
                                                valid_epoch_loss=self.avg_epoch_loss)
 
 
@@ -179,8 +181,8 @@ def validNICE():
     valid_dataloader = DataLoader(dataset=valid_dataset,
                                   batch_size=config.network.batch_size,
                                   shuffle=False,
-                                  pin_memory=True,
-                                  num_workers=10)
+                                  pin_memory=False,
+                                  num_workers=22)
     valid_session = NICEValidSession(dataloader=valid_dataloader)
     valid_session.validate()
 

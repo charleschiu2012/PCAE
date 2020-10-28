@@ -195,8 +195,8 @@ def validateNICEAE():
     valid_dataloader = DataLoader(dataset=valid_dataset,
                                   batch_size=config.network.batch_size,
                                   shuffle=False,
-                                  pin_memory=True,
-                                  num_workers=15)
+                                  pin_memory=False,
+                                  num_workers=22)
     valid_session = NICEAEValidSession(dataloader=valid_dataloader)
     valid_session.validate()
 

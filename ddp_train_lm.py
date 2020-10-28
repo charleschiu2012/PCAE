@@ -1,7 +1,5 @@
 import argparse
 import logging
-import multiprocessing
-from tqdm import tqdm
 import torch
 import numpy as np
 from torch.utils.data import DataLoader
@@ -10,7 +8,7 @@ from PCAE.config import Config
 from PCAE.dataloader import PCDataset
 # from PCAE.jobs.networks.loss import chamfer_distance_loss, emd_loss
 from PCAE.jobs.networks import Network
-from PCAE.jobs.networks.models import PointNetAE, LMNetAE, LMImgEncoder, LMDecoder
+from PCAE.jobs.networks.models import LMNetAE, LMImgEncoder, LMDecoder
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
 
@@ -105,7 +103,9 @@ class LMTrainSession(Network):
             if config.cuda.dataparallel_mode == 'DistributedDataParallel':
                 self.sampler.set_epoch(self._epoch)
 
-            for idx, (inputs_img, inputs_pc, targets, _, _) in tqdm(enumerate(self.get_data())):
+            final_step = 0
+            for idx, (inputs_img, inputs_pc, targets, _, _) in enumerate(self.get_data()):
+                final_step = idx
                 self.optimizer.zero_grad()
                 with torch.no_grad():
                     latent_pc, _ = self.prior_model(inputs_pc)
@@ -118,8 +118,10 @@ class LMTrainSession(Network):
                 self.log_step_loss(loss=loss.item() / config.network.loss_scale_factor, step_idx=idx + 1)
                 self.avg_step_loss = 0
 
+            logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
             # self.save_model()
             self.log_epoch_loss()
+            self.avg_epoch_loss = .0
             self._epoch += 1
 
         if config.cuda.dataparallel_mode == 'DistributedDataParallel':
@@ -154,9 +156,9 @@ class LMTrainSession(Network):
             logging.info('Epoch %d, %d Step, loss = %.6f' % (self._epoch, step_idx, self.avg_step_loss))
 
             if ((argument.local_rank is not None) and config.cuda.rank[0] == 0) and config.wandb.visual_flag:
-                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss)
+                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss, loss_name='l1')
             elif (argument.local_rank is None) and config.wandb.visual_flag:
-                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss)
+                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss, loss_name='l1')
 
     def log_epoch_loss(self):
         if config.cuda.dataparallel_mode == 'Dataparallel':
@@ -166,18 +168,20 @@ class LMTrainSession(Network):
 
         logging.info('Logging Epoch Loss...')
         if ((argument.local_rank is not None) and config.cuda.rank[0] == 0) and config.wandb.visual_flag:
-            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='L1',
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='L1',
                                            train_epoch_loss=self.avg_epoch_loss)
-            self.avg_epoch_loss = .0
         elif (argument.local_rank is None) and config.wandb.visual_flag:
-            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='L1',
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='L1',
                                            train_epoch_loss=self.avg_epoch_loss)
-            self.avg_epoch_loss = .0
 
 
 def trainLM():
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-8s %(message)s',
-                        datefmt='%Y-%m-%d %H:%M:%S')
+    if (argument.local_rank is not None) and config.cuda.rank[0] == 0:
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-8s %(message)s',
+                            datefmt='%Y-%m-%d %H:%M:%S')
+    elif argument.local_rank is None:
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-8s %(message)s',
+                            datefmt='%Y-%m-%d %H:%M:%S')
     if (argument.local_rank is not None) and config.cuda.rank[0] == 0:
         config.show_config()
     elif argument.local_rank is None:
@@ -202,9 +206,9 @@ def trainLM():
         train_dataloader = DataLoader(dataset=train_dataset,
                                       batch_size=config.network.batch_size,
                                       shuffle=(train_sampler is None),
-                                      pin_memory=True,
+                                      pin_memory=False,
                                       sampler=train_sampler,
-                                      num_workers=15,
+                                      num_workers=43,
                                       worker_init_fn=np.random.seed(0))
         train_session = LMTrainSession(dataloader=train_dataloader, sampler=train_sampler)
         train_session.train()

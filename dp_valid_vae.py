@@ -1,7 +1,5 @@
 import argparse
 import logging
-import multiprocessing
-from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader
 
@@ -60,7 +58,7 @@ parser.add_argument('--learning_rate', type=float, required=True, default=5e-5,
                     help='Learning rate')
 '''wandb
 '''
-parser.add_argument('--project_name', type=str, required=True, default='PCVAE',
+parser.add_argument('--project_name', type=str, required=True,
                     help='Project name to log in wandb')
 parser.add_argument('--run_name', type=str, required=True, default='ImgEncoderVAE',
                     help='Run name to log under project')
@@ -100,8 +98,10 @@ class VAEValidSession(Network):
             self.model.eval()
             self.prior_model.eval()
             self.decoder.eval()
+            final_step = 0
             with torch.no_grad():
-                for idx, (inputs_img, inputs_pc, targets, _, _) in tqdm(enumerate(self.get_data())):
+                for idx, (inputs_img, inputs_pc, targets, _, _) in enumerate(self.get_data()):
+                    final_step = idx
                     latent_pc, _ = self.prior_model(inputs_pc)
                     latent_img, mu, log_var = self.model(inputs_img)
                     reconst_imgs = self.decoder(latent_img)
@@ -113,6 +113,7 @@ class VAEValidSession(Network):
                     self.avg_epoch_cd_loss += cd_loss.item()
                     self.avg_epoch_emd_loss += _emd_loss.item()
 
+                logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
                 self.log_epoch_loss()
                 self.avg_epoch_kld_loss = .0
                 self.avg_epoch_cd_loss = .0
@@ -146,11 +147,11 @@ class VAEValidSession(Network):
 
         logging.info('Logging Epoch Loss...')
         if config.wandb.visual_flag:
-            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='kld',
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='kld',
                                            valid_epoch_loss=self.avg_epoch_kld_loss)
-            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='cd',
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='cd',
                                            valid_epoch_loss=self.avg_epoch_cd_loss)
-            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='emd',
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='emd',
                                            valid_epoch_loss=self.avg_epoch_emd_loss)
 
 
@@ -164,8 +165,8 @@ def validVAE():
     valid_dataloader = DataLoader(dataset=valid_dataset,
                                   batch_size=config.network.batch_size,
                                   shuffle=False,
-                                  pin_memory=True,
-                                  num_workers=15)
+                                  pin_memory=False,
+                                  num_workers=43)
     valid_session = VAEValidSession(dataloader=valid_dataloader)
     valid_session.validate()
 

@@ -1,7 +1,5 @@
 import argparse
 import logging
-import multiprocessing
-from tqdm import tqdm
 import torch
 import numpy as np
 from torch.utils.data import DataLoader
@@ -84,6 +82,10 @@ class VAETrainSession(Network):
 
         self.avg_step_loss = 0.0
         self.avg_epoch_loss = 0.0
+        self.avg_step_cd_loss = 0.0
+        self.avg_epoch_cd_loss = 0.0
+        self.avg_step_kld_loss = 0.0
+        self.avg_epoch_kld_loss = 0.0
         self.prior_model = None
         self.decoder = None
         self.model_util = ModelUtil(config=config)
@@ -107,7 +109,9 @@ class VAETrainSession(Network):
             if config.cuda.dataparallel_mode == 'DistributedDataParallel':
                 self.sampler.set_epoch(self._epoch)
 
-            for idx, (inputs_img, inputs_pc, targets, _, _) in tqdm(enumerate(self.get_data())):
+            final_step = 0
+            for idx, (inputs_img, inputs_pc, targets, _, _) in enumerate(self.get_data()):
+                final_step = idx
                 self.optimizer.zero_grad()
                 with torch.no_grad():
                     latent_pc, _ = self.prior_model(inputs_pc)
@@ -122,11 +126,20 @@ class VAETrainSession(Network):
                 loss.backward()
                 self.optimizer.step()
 
-                self.log_step_loss(loss=loss.item(), step_idx=idx + 1)
-                self.avg_step_loss = 0
+                self.log_step_loss(sum_loss=loss.item(),
+                                   cd_loss=cd_loss.item(),
+                                   kld_loss=kld_loss.item(),
+                                   step_idx=idx + 1)
+                self.avg_step_loss = .0
+                self.avg_step_cd_loss = .0
+                self.avg_step_kld_loss = .0
 
+            logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
             # self.save_model()
             self.log_epoch_loss()
+            self.avg_epoch_loss = .0
+            self.avg_epoch_cd_loss = .0
+            self.avg_epoch_kld_loss = .0
             self._epoch += 1
 
         if config.cuda.dataparallel_mode == 'DistributedDataParallel':
@@ -153,18 +166,32 @@ class VAETrainSession(Network):
         self.decoder = self.model_util.set_model_parallel_gpu(self.decoder)
         self.decoder = self.model_util.load_partial_pretrained_model(self.prior_model, self.decoder, 'decoder')
 
-    def log_step_loss(self, loss, step_idx):
-        self.avg_step_loss += loss
-        self.avg_epoch_loss += loss
+    def log_step_loss(self, sum_loss, cd_loss, kld_loss, step_idx):
+        self.avg_step_loss += sum_loss
+        self.avg_epoch_loss += sum_loss
+        self.avg_step_cd_loss += cd_loss
+        self.avg_epoch_cd_loss += cd_loss
+        self.avg_step_kld_loss += kld_loss
+        self.avg_epoch_kld_loss += kld_loss
 
         if step_idx % config.wandb.step_loss_freq == 0:
             self.avg_step_loss /= config.wandb.step_loss_freq
             logging.info('Epoch %d, %d Step, loss = %.6f' % (self._epoch, step_idx, self.avg_step_loss))
 
             if ((argument.local_rank is not None) and config.cuda.rank[0] == 0) and config.wandb.visual_flag:
-                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss)
+                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss,
+                                              loss_name='sum')
+                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_cd_loss,
+                                              loss_name='cd')
+                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_kld_loss,
+                                              loss_name='kld')
             elif (argument.local_rank is None) and config.wandb.visual_flag:
-                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss)
+                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss,
+                                              loss_name='sum')
+                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_cd_loss,
+                                              loss_name='cd')
+                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_kld_loss,
+                                              loss_name='kld')
 
     def log_epoch_loss(self):
         if config.cuda.dataparallel_mode == 'Dataparallel':
@@ -174,18 +201,28 @@ class VAETrainSession(Network):
 
         logging.info('Logging Epoch Loss...')
         if ((argument.local_rank is not None) and config.cuda.rank[0] == 0) and config.wandb.visual_flag:
-            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='CD+KLD',
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='sum',
                                            train_epoch_loss=self.avg_epoch_loss)
-            self.avg_epoch_loss = .0
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='cd',
+                                           train_epoch_loss=self.avg_epoch_cd_loss)
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='kld',
+                                           train_epoch_loss=self.avg_epoch_kld_loss)
         elif (argument.local_rank is None) and config.wandb.visual_flag:
-            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='CD+KLD',
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='sum',
                                            train_epoch_loss=self.avg_epoch_loss)
-            self.avg_epoch_loss = .0
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='cd',
+                                           train_epoch_loss=self.avg_epoch_cd_loss)
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='kld',
+                                           train_epoch_loss=self.avg_epoch_kld_loss)
 
 
 def trainVAE():
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-8s %(message)s',
-                        datefmt='%Y-%m-%d %H:%M:%S')
+    if (argument.local_rank is not None) and config.cuda.rank[0] == 0:
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-8s %(message)s',
+                            datefmt='%Y-%m-%d %H:%M:%S')
+    elif argument.local_rank is None:
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-8s %(message)s',
+                            datefmt='%Y-%m-%d %H:%M:%S')
     if (argument.local_rank is not None) and config.cuda.rank[0] == 0:
         config.show_config()
     elif argument.local_rank is None:
@@ -210,9 +247,9 @@ def trainVAE():
         train_dataloader = DataLoader(dataset=train_dataset,
                                       batch_size=config.network.batch_size,
                                       shuffle=(train_sampler is None),
-                                      pin_memory=True,
+                                      pin_memory=False,
                                       sampler=train_sampler,
-                                      num_workers=15,
+                                      num_workers=43,
                                       worker_init_fn=np.random.seed(0))
         train_session = VAETrainSession(dataloader=train_dataloader, sampler=train_sampler)
         train_session.train()

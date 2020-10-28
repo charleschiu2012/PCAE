@@ -153,6 +153,9 @@ class NICEAETrainSession(Network):
             logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
             self.save_model()
             self.log_epoch_loss()
+            self.avg_epoch_loss = .0
+            self.avg_epoch_cd_loss = .0
+            self.avg_epoch_log_prob_loss = .0
             self._epoch += 1
 
         if config.cuda.dataparallel_mode == 'DistributedDataParallel':
@@ -218,9 +221,6 @@ class NICEAETrainSession(Network):
                                            train_epoch_loss=self.avg_epoch_cd_loss)
             self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='log_prob',
                                            train_epoch_loss=self.avg_epoch_log_prob_loss)
-            self.avg_epoch_loss = .0
-            self.avg_epoch_cd_loss = .0
-            self.avg_epoch_log_prob_loss = .0
         elif (argument.local_rank is None) and config.wandb.visual_flag:
             self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='sum',
                                            train_epoch_loss=self.avg_epoch_loss)
@@ -228,9 +228,6 @@ class NICEAETrainSession(Network):
                                            train_epoch_loss=self.avg_epoch_cd_loss)
             self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='log_prob',
                                            train_epoch_loss=self.avg_epoch_log_prob_loss)
-            self.avg_epoch_loss = .0
-            self.avg_epoch_cd_loss = .0
-            self.avg_epoch_log_prob_loss = .0
 
 
 def trainNICEAE():
@@ -251,8 +248,8 @@ def trainNICEAE():
         train_dataloader = DataLoader(dataset=train_dataset,
                                       batch_size=config.network.batch_size,
                                       shuffle=True,
-                                      pin_memory=True,
-                                      num_workers=15)
+                                      pin_memory=False,
+                                      num_workers=22)
         train_session = NICEAETrainSession(dataloader=train_dataloader)
         train_session.train()
 
@@ -264,9 +261,9 @@ def trainNICEAE():
         train_dataloader = DataLoader(dataset=train_dataset,
                                       batch_size=config.network.batch_size,
                                       shuffle=(train_sampler is None),
-                                      pin_memory=True,
+                                      pin_memory=False,
                                       sampler=train_sampler,
-                                      num_workers=15,
+                                      num_workers=12,
                                       worker_init_fn=np.random.seed(0))
         train_session = NICEAETrainSession(dataloader=train_dataloader, sampler=train_sampler)
         train_session.train()

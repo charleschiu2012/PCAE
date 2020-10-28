@@ -1,7 +1,5 @@
 import argparse
 import logging
-import multiprocessing
-from tqdm import tqdm
 import torch
 from torch.utils.data import DataLoader
 
@@ -94,14 +92,17 @@ class AEValidSession(Network):
             self.model_util.test_trained_model(model=self.model, test_epoch=i + 1)
 
             self.model.eval()
+            final_step = 0
             with torch.no_grad():
-                for idx, (inputs_pc, targets, _) in tqdm(enumerate(self.get_data())):
+                for idx, (inputs_pc, targets, _) in enumerate(self.get_data()):
+                    final_step = idx
                     _, predicts = self.model(inputs_pc)
                     cd_loss = chamfer_distance_loss(predicts, targets)
                     _emd_loss = emd_loss(predicts, targets)
                     self.avg_epoch_cd_loss += cd_loss.item()
                     self.avg_epoch_emd_loss += _emd_loss.item()
 
+            logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
             self.log_epoch_loss()
             self.avg_epoch_cd_loss = .0
             self.avg_epoch_emd_loss = .0
@@ -119,14 +120,14 @@ class AEValidSession(Network):
         logging.info('Logging Epoch Loss...')
         if config.wandb.visual_flag:
             if not config.dataset.test_unseen_flag:
-                self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='cd',
+                self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='cd',
                                                valid_epoch_loss=self.avg_epoch_cd_loss)
-                self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='emd',
+                self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='emd',
                                                valid_epoch_loss=self.avg_epoch_emd_loss)
             if config.dataset.test_unseen_flag:
-                self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='unseen_cd',
+                self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='unseen_cd',
                                                valid_epoch_loss=self.avg_epoch_cd_loss)
-                self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='unseen_emd',
+                self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='unseen_emd',
                                                valid_epoch_loss=self.avg_epoch_emd_loss)
 
 
@@ -140,8 +141,8 @@ def validAE():
     valid_dataloader = DataLoader(dataset=valid_dataset,
                                   batch_size=config.network.batch_size,
                                   shuffle=False,
-                                  pin_memory=True,
-                                  num_workers=15)
+                                  pin_memory=False,
+                                  num_workers=22)
     valid_session = AEValidSession(dataloader=valid_dataloader)
     valid_session.validate()
 

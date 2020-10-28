@@ -1,7 +1,5 @@
 import argparse
 import logging
-import multiprocessing
-from tqdm import tqdm
 import torch
 import numpy as np
 from torch.utils.data import DataLoader
@@ -82,8 +80,8 @@ class AETrainSession(Network):
         self._pretrained_epoch = ''
         self._is_scratch = False
 
-        self.avg_step_loss = 0.0
-        self.avg_epoch_loss = 0.0
+        self.avg_step_loss = .0
+        self.avg_epoch_loss = .0
         self.model_util = ModelUtil(config=config)
         self.visualizer = None
         if config.cuda.dataparallel_mode == 'DistributedDataParallel':
@@ -103,7 +101,9 @@ class AETrainSession(Network):
             if config.cuda.dataparallel_mode == 'DistributedDataParallel':
                 self.sampler.set_epoch(self._epoch)
 
-            for idx, (inputs_pc, targets, pc_ids) in tqdm(enumerate(self.get_data())):
+            final_step = 0
+            for idx, (inputs_pc, targets, pc_ids) in enumerate(self.get_data()):
+                final_step = idx
                 self.optimizer.zero_grad()
                 latents, predicts = self.model(inputs_pc)
 
@@ -115,8 +115,10 @@ class AETrainSession(Network):
                 self.log_step_loss(loss=loss.item() / config.network.loss_scale_factor, step_idx=idx + 1)
                 self.avg_step_loss = 0
 
+            logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
             self.save_model()
             self.log_epoch_loss()
+            self.avg_epoch_loss = .0
             self._epoch += 1
 
         if config.cuda.dataparallel_mode == 'DistributedDataParallel':
@@ -138,9 +140,9 @@ class AETrainSession(Network):
             logging.info('Epoch %d, %d Step, loss = %.10f' % (self._epoch, step_idx, self.avg_step_loss))
 
             if ((argument.local_rank is not None) and config.cuda.rank[0] == 0) and config.wandb.visual_flag:
-                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss)
+                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss, loss_name='cd')
             elif (argument.local_rank is None) and config.wandb.visual_flag:
-                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss)
+                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss, loss_name='cd')
 
     def log_epoch_loss(self):
         if config.cuda.dataparallel_mode == 'Dataparallel':
@@ -150,18 +152,20 @@ class AETrainSession(Network):
 
         logging.info('Logging Epoch Loss...')
         if ((argument.local_rank is not None) and config.cuda.rank[0] == 0) and config.wandb.visual_flag:
-            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='cd',
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='cd',
                                            train_epoch_loss=self.avg_epoch_loss)
-            self.avg_epoch_loss = .0
         elif (argument.local_rank is None) and config.wandb.visual_flag:
-            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_type='cd',
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='cd',
                                            train_epoch_loss=self.avg_epoch_loss)
-            self.avg_epoch_loss = .0
 
 
 def trainAE():
-    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-8s %(message)s',
-                        datefmt='%Y-%m-%d %H:%M:%S')
+    if (argument.local_rank is not None) and config.cuda.rank[0] == 0:
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-8s %(message)s',
+                            datefmt='%Y-%m-%d %H:%M:%S')
+    elif argument.local_rank is None:
+        logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-8s %(message)s',
+                            datefmt='%Y-%m-%d %H:%M:%S')
     if (argument.local_rank is not None) and config.cuda.rank[0] == 0:
         config.show_config()
     elif argument.local_rank is None:
@@ -173,8 +177,8 @@ def trainAE():
         train_dataloader = DataLoader(dataset=train_dataset,
                                       batch_size=config.network.batch_size,
                                       shuffle=True,
-                                      pin_memory=True,
-                                      num_workers=15)
+                                      pin_memory=False,
+                                      num_workers=22)
         train_session = AETrainSession(dataloader=train_dataloader)
         train_session.train()
 
@@ -186,9 +190,9 @@ def trainAE():
         train_dataloader = DataLoader(dataset=train_dataset,
                                       batch_size=config.network.batch_size,
                                       shuffle=(train_sampler is None),
-                                      pin_memory=True,
+                                      pin_memory=False,
                                       sampler=train_sampler,
-                                      num_workers=15,
+                                      num_workers=12,
                                       worker_init_fn=np.random.seed(0))
         train_session = AETrainSession(dataloader=train_dataloader, sampler=train_sampler)
         train_session.train()
