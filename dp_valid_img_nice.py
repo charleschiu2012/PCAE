@@ -1,7 +1,6 @@
 import argparse
 import logging
 import torch
-import numpy as np
 from torch.utils.data import DataLoader
 import torch.distributions as distributions
 
@@ -110,12 +109,13 @@ class ImgNICEValidSession(Network):
         if config.nice.latent == 'normal':
             self.prior = torch.distributions.Normal(torch.tensor(0.).cuda(), torch.tensor(1.).cuda())
 
-        self.visualizer = WandbVisualizer(config=config, job_type='valid', model=NICE(prior=self.prior,
-                                                                                      coupling=config.nice.coupling,
-                                                                                      in_out_dim=self.full_dim,
-                                                                                      mid_dim=config.nice.mid_dim,
-                                                                                      hidden=self.hidden,
-                                                                                      mask_config=config.nice.mask_config))
+        self.visualizer = WandbVisualizer(config=config, job_type='valid',
+                                          model=NICE(prior=self.prior,
+                                                     coupling=config.nice.coupling,
+                                                     in_out_dim=self.full_dim,
+                                                     mid_dim=config.nice.mid_dim,
+                                                     hidden=self.hidden,
+                                                     mask_config=config.nice.mask_config))
 
     def validate(self):
         self.set_model()
@@ -134,8 +134,8 @@ class ImgNICEValidSession(Network):
 
                 latent_imgs = self.model(inputs_img)
                 z, _ = self.flow.module.f(latent_imgs)
-                reconst_latents = self.flow.module.g(z)
-                prediction_imgs = self.pc_decoder(reconst_latents)
+                re_latents = self.flow.module.g(z)
+                prediction_imgs = self.pc_decoder(re_latents)
 
                 loss = chamfer_distance_loss(prediction_imgs, targets) * config.network.loss_scale_factor
 

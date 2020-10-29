@@ -117,10 +117,10 @@ class VAETrainSession(Network):
                     latent_pc, _ = self.prior_model(inputs_pc)
                 latent_img, mu, log_var = self.model(inputs_img)
                 with torch.no_grad():
-                    reconst_imgs = self.decoder(latent_img)
+                    re_imgs = self.decoder(latent_img)
 
                 kld_loss = KLDLoss(mu, log_var)
-                cd_loss = chamfer_distance_loss(reconst_imgs, targets)
+                cd_loss = chamfer_distance_loss(re_imgs, targets)
                 loss = kld_loss + cd_loss
 
                 loss.backward()
@@ -161,10 +161,7 @@ class VAETrainSession(Network):
         self.prior_model = self.model_util.load_prior_model(self.prior_model)
         '''PC Decoder
         '''
-        self.decoder = LMDecoder(config.dataset.resample_amount)
-        self.decoder = self.model_util.set_model_device(self.decoder)
-        self.decoder = self.model_util.set_model_parallel_gpu(self.decoder)
-        self.decoder = self.model_util.load_partial_pretrained_model(self.prior_model, self.decoder, 'decoder')
+        self.decoder = self.prior_model.module.decoder
 
     def log_step_loss(self, sum_loss, cd_loss, kld_loss, step_idx):
         self.avg_step_loss += sum_loss

@@ -105,9 +105,9 @@ class AETrainSession(Network):
             for idx, (inputs_pc, targets, pc_ids) in enumerate(self.get_data()):
                 final_step = idx
                 self.optimizer.zero_grad()
-                latents, predicts = self.model(inputs_pc)
+                latents, predictions = self.model(inputs_pc)
 
-                loss = chamfer_distance_loss(predicts, targets) * config.network.loss_scale_factor
+                loss = chamfer_distance_loss(predictions, targets) * config.network.loss_scale_factor
 
                 loss.backward()
                 self.optimizer.step()

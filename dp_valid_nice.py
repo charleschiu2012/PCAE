@@ -7,7 +7,7 @@ import torch.distributions as distributions
 from PCAE.config import Config
 from PCAE.dataloader import PCDataset
 from PCAE.jobs.networks import Network
-from PCAE.jobs.networks.models import LMNetAE, LMDecoder, NICE
+from PCAE.jobs.networks.models import LMNetAE, NICE
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
 
@@ -123,12 +123,12 @@ class NICEValidSession(Network):
             with torch.no_grad():
                 for idx, (inputs_pc, targets, pc_ids) in enumerate(self.get_data()):
                     final_step = idx
-                    ae_latents, reconst_pcs = self.prior_model(inputs_pc)
+                    ae_latents, re_pcs = self.prior_model(inputs_pc)
 
                     z, _ = self.model.module.f(ae_latents)
-                    reconst_latents = self.model.module.g(z)
-                    l1_loss = torch.nn.MSELoss()(reconst_latents, ae_latents)
-                    self.avg_epoch_loss += l1_loss.item()
+                    re_latents = self.model.module.g(z)
+                    mse_loss = torch.nn.MSELoss()(re_latents, ae_latents)
+                    self.avg_epoch_loss += mse_loss.item()
 
             logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
             self.log_epoch_loss()

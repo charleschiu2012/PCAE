@@ -127,20 +127,20 @@ class ModelUtil:
     def get_models_path(checkpoint_path):
         return sorted(glob('%s/epoch*' % checkpoint_path))
 
-    # @staticmethod
-    # def load_partial_pretrained_model(pretrained_model, apply_model, which_part: str):
-    #     import collections
-    #     apply_part = collections.OrderedDict()
-    #     for k, v in pretrained_model.state_dict().items():
-    #         if k.split('.')[1] == which_part:
-    #             key_name = 'module.' + k.split('.', 2)[2]
-    #             apply_part[key_name] = v
-    #
-    #     apply_model_dict = apply_model.state_dict()
-    #     apply_model_dict.update(apply_part)
-    #     apply_model.load_state_dict(apply_model_dict)
-    #
-    #     return apply_model
+    @staticmethod
+    def load_partial_pretrained_model(pretrained_model, apply_model, which_part: str):
+        import collections
+        apply_part = collections.OrderedDict()
+        for k, v in pretrained_model.state_dict().items():
+            if k.split('.')[1] == which_part:
+                key_name = 'module.' + k.split('.', 2)[2]
+                apply_part[key_name] = v
+
+        apply_model_dict = apply_model.state_dict()
+        apply_model_dict.update(apply_part)
+        apply_model.load_state_dict(apply_model_dict)
+
+        return apply_model
 
     @staticmethod
     def cleanup():

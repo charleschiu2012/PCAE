@@ -7,7 +7,7 @@ from PCAE.config import Config
 from PCAE.dataloader import PCDataset
 from PCAE.jobs.networks.loss import KLDLoss, chamfer_distance_loss, emd_loss
 from PCAE.jobs.networks import Network
-from PCAE.jobs.networks.models import PointNetAE, LMNetAE, LMImgEncoder, LMDecoder, ImgEncoderVAE
+from PCAE.jobs.networks.models import PointNetAE, LMNetAE, LMImgEncoder, ImgEncoderVAE
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
 
@@ -102,11 +102,11 @@ class VAEValidSession(Network):
                     final_step = idx
                     latent_pc, _ = self.prior_model(inputs_pc)
                     latent_img, mu, log_var = self.model(inputs_img)
-                    reconst_imgs = self.decoder(latent_img)
+                    re_imgs = self.decoder(latent_img)
 
                     kld_loss = KLDLoss(mu, log_var)
-                    cd_loss = chamfer_distance_loss(reconst_imgs, targets)
-                    _emd_loss = emd_loss(reconst_imgs, targets)
+                    cd_loss = chamfer_distance_loss(re_imgs, targets)
+                    _emd_loss = emd_loss(re_imgs, targets)
                     self.avg_epoch_kld_loss += kld_loss.item()
                     self.avg_epoch_cd_loss += cd_loss.item()
                     self.avg_epoch_emd_loss += _emd_loss.item()

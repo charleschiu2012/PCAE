@@ -104,9 +104,9 @@ class LMValidSession(Network):
                     latent_pc, _ = self.prior_model(inputs_pc)
                     l1_loss = torch.nn.L1Loss()(latent_img, latent_pc) * config.network.loss_scale_factor
 
-                    reconst_imgs = self.decoder(latent_img)
-                    cd_loss = chamfer_distance_loss(reconst_imgs, targets)
-                    _emd_loss = emd_loss(reconst_imgs, targets)
+                    re_imgs = self.decoder(latent_img)
+                    cd_loss = chamfer_distance_loss(re_imgs, targets)
+                    _emd_loss = emd_loss(re_imgs, targets)
                     self.avg_epoch_l1_loss += l1_loss.item()
                     self.avg_epoch_cd_loss += cd_loss.item()
                     self.avg_epoch_emd_loss += _emd_loss.item()

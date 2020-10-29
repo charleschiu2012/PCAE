@@ -1,7 +1,6 @@
 import argparse
 import logging
 import torch
-import numpy as np
 from torch.utils.data import DataLoader
 import torch.distributions as distributions
 

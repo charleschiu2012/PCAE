@@ -8,10 +8,12 @@ import torch.distributions as distributions
 from PCAE.config import Config
 from PCAE.dataloader import PCDataset
 from PCAE.jobs.networks import Network
-from PCAE.jobs.networks.models import LMNetAE, NICE, LMImgEncoder
+from PCAE.jobs.networks.models import LMNetAE, NICE, LMImgEncoder, LMDecoder
 from PCAE.jobs.networks.loss import chamfer_distance_loss
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
+
+import wandb
 
 parser = argparse.ArgumentParser()
 
@@ -135,20 +137,32 @@ class ImgNICETrainSession(Network):
                 self.optimizer.zero_grad()
                 latent_imgs = self.model(inputs_img)
 
-                z, _ = self.flow.module.f(latent_imgs)
-                reconst_latents = self.flow.module.g(z)
-                prediction_imgs = self.pc_decoder(reconst_latents)
+                # z, _ = self.flow.module.f(latent_imgs)
+                # re_latents = self.flow.module.g(z)
+                prediction_imgs = self.pc_decoder(latent_imgs)
 
                 loss = chamfer_distance_loss(prediction_imgs, targets) * config.network.loss_scale_factor
 
                 loss.backward()
+                # print(self.flow)
+                # print(self.pc_decoder)
+                # exit(1)
+                # print(self.model.module.conv1)
+                # print(self.flow.module.coupling[0].in_block[0].weight.grad)
+                # wandb.log({'flow.module.coupling[0].in_block[0].weight.grad':
+                #                self.flow.module.coupling[0].in_block[0].weight.grad.sum().item(),
+                #            'step': idx})
+                # print(self.model.module.conv1.weight.grad)
+                # print(self.pc_decoder.module.fc1.weight.grad)
+                wandb.log({'pc_decoder.fc1.weight.grad': self.pc_decoder.module.fc1.weight.grad.sum().item(),
+                           'step': idx})
                 self.optimizer.step()
 
                 self.log_step_loss(loss=loss.item(), step_idx=idx + 1)
                 self.avg_step_loss = .0
 
             logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
-            self.save_model()
+            # self.save_model()
             self.log_epoch_loss()
             self.avg_epoch_loss = .0
             self._epoch += 1
@@ -167,7 +181,13 @@ class ImgNICETrainSession(Network):
         prior_model = self.model_util.set_model_device(prior_model)
         prior_model = self.model_util.set_model_parallel_gpu(prior_model)
         prior_model = self.model_util.load_prior_model(prior_model)
-        self.pc_decoder = self.model_util.freeze_model(prior_model.module.decoder)
+        decoder = LMDecoder(config.dataset.resample_amount)
+        decoder = self.model_util.set_model_device(decoder)
+        decoder = self.model_util.set_model_parallel_gpu(decoder)
+        self.pc_decoder = self.model_util.load_partial_pretrained_model(prior_model, decoder,
+                                                                        which_part='decoder')
+        # self.pc_decoder = prior_model.module.decoder
+        # self.pc_decoder = self.model_util.freeze_model(prior_model.module.decoder)
 
         '''NICE
         '''
@@ -180,7 +200,7 @@ class ImgNICETrainSession(Network):
         self.flow = self.model_util.set_model_device(self.flow)
         self.flow = self.model_util.set_model_parallel_gpu(self.flow)
         self.flow = self.model_util.load_nice_model(self.flow)
-        self.flow = self.model_util.freeze_model(self.flow)
+        # self.flow = self.model_util.freeze_model(self.flow)
 
     def log_step_loss(self, loss, step_idx):
         self.avg_step_loss += loss
