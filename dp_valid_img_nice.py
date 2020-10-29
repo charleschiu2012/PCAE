@@ -1,13 +1,15 @@
 import argparse
 import logging
 import torch
+import numpy as np
 from torch.utils.data import DataLoader
 import torch.distributions as distributions
 
 from PCAE.config import Config
 from PCAE.dataloader import PCDataset
 from PCAE.jobs.networks import Network
-from PCAE.jobs.networks.models import LMNetAE, LMDecoder, NICE
+from PCAE.jobs.networks.models import LMNetAE, NICE, LMImgEncoder
+from PCAE.jobs.networks.loss import chamfer_distance_loss
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
 
@@ -19,6 +21,7 @@ parser.add_argument('--gpu_usage', type=int, required=True, default=8,
                     help='How many gpu you want use')
 parser.add_argument('--dataparallel_mode', type=str, required=True,
                     help='Which mode of dataparallel')
+parser.add_argument("--local_rank", type=int)
 '''dataset
 '''
 parser.add_argument('--dataset_name', type=str, required=True, default='LMNet_ShapeNet_PC',
@@ -35,13 +38,13 @@ parser.add_argument('--test_unseen_flag', action='store_true',
 '''
 parser.add_argument('--mode_flag', type=str, required=True,
                     help='Mode to train')
-parser.add_argument('--img_encoder', type=str,
+parser.add_argument('--img_encoder', type=str, required=True,
                     help='Which Image encoder')
 parser.add_argument('--prior_model', type=str, required=True,
                     help='Which point cloud autoencoder')
 parser.add_argument('--checkpoint_path', type=str, required=True,
                     help='Where to store/load weights')
-parser.add_argument('--prior_epoch', type=str, default='300',
+parser.add_argument('--prior_epoch', type=str, required=True, default='300',
                     help='Which epoch of autoencoder to use to ImgEncoder')
 parser.add_argument('--loss_scale_factor', type=int, required=True, default=10000,
                     help='Scale your loss')
@@ -53,7 +56,7 @@ parser.add_argument('--z_dim', type=int, default=512,
                     help='Size of vae latent')
 parser.add_argument('--epoch_num', type=int, required=True, default=300,
                     help='How many epoch to train')
-parser.add_argument('--learning_rate', type=float, required=True,
+parser.add_argument('--learning_rate', type=float, required=True, default=5e-5,
                     help='Learning rate')
 '''nice
 '''
@@ -71,6 +74,8 @@ parser.add_argument('--coupling', type=int, required=True, default=4,
                     help='Number of coupling layers')
 parser.add_argument('--mask_config', type=float, required=True, default=1.,
                     help='mask_config')  # TODO
+parser.add_argument('--nice_epoch', type=int,
+                    help='Which epoch of NICE to use to ImgEncoder')
 '''wandb
 '''
 parser.add_argument('--project_name', type=str, required=True,
@@ -88,27 +93,29 @@ argument = parser.parse_args()
 config = Config(argument)
 
 
-class NICEValidSession(Network):
+class ImgNICEValidSession(Network):
     def __init__(self, dataloader, model=None):
         super().__init__(config=config, data_loader=dataloader, data_type='valid', epoch=1, model=model)
+
+        self.avg_step_loss = .0
+        self.avg_epoch_loss = .0
+        self.flow = None
+        self.pc_decoder = None
+        self.model_util = ModelUtil(config=config)
+        self.models_path = self.model_util.get_models_path(config.network.checkpoint_path)
+        self.visualizer = None
 
         self.full_dim = 512
         self.hidden = 5
         if config.nice.latent == 'normal':
             self.prior = torch.distributions.Normal(torch.tensor(0.).cuda(), torch.tensor(1.).cuda())
 
-        self.avg_epoch_loss = .0
-        self.prior_model = None
-        # self.decoder = None
-        self.model_util = ModelUtil(config=config)
-        self.models_path = self.model_util.get_models_path(config.network.checkpoint_path)
-        self.visualizer = WandbVisualizer(config=config, job_type='valid',
-                                          model=NICE(prior=self.prior,
-                                                     coupling=config.nice.coupling,
-                                                     in_out_dim=self.full_dim,
-                                                     mid_dim=config.nice.mid_dim,
-                                                     hidden=self.hidden,
-                                                     mask_config=config.nice.mask_config))
+        self.visualizer = WandbVisualizer(config=config, job_type='valid', model=NICE(prior=self.prior,
+                                                                                      coupling=config.nice.coupling,
+                                                                                      in_out_dim=self.full_dim,
+                                                                                      mid_dim=config.nice.mid_dim,
+                                                                                      hidden=self.hidden,
+                                                                                      mask_config=config.nice.mask_config))
 
     def validate(self):
         self.set_model()
@@ -116,57 +123,71 @@ class NICEValidSession(Network):
             self._epoch = self.model_util.get_epoch_num(model_path) - 1
             self.model_util.test_trained_model(model=self.model, test_epoch=i + 1)
 
-            self.model.eval()
-            self.prior_model.eval()
-            # self.decoder.eval()
-            final_step = 0
-            with torch.no_grad():
-                for idx, (inputs_pc, targets, pc_ids) in enumerate(self.get_data()):
-                    final_step = idx
-                    ae_latents, reconst_pcs = self.prior_model(inputs_pc)
+        self.model.eval()
+        self.pc_decoder.eval()
+        self.flow.eval()
 
-                    z, _ = self.model.module.f(ae_latents)
-                    reconst_latents = self.model.module.g(z)
-                    l1_loss = torch.nn.MSELoss()(reconst_latents, ae_latents)
-                    self.avg_epoch_loss += l1_loss.item()
+        final_step = 0
+        with torch.no_grad():
+            for idx, (inputs_img, inputs_pc, targets, _, _) in enumerate(self.get_data()):
+                final_step = idx
 
-            logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
-            self.log_epoch_loss()
-            self.avg_epoch_loss = .0
+                latent_imgs = self.model(inputs_img)
+                z, _ = self.flow.module.f(latent_imgs)
+                reconst_latents = self.flow.module.g(z)
+                prediction_imgs = self.pc_decoder(reconst_latents)
+
+                loss = chamfer_distance_loss(prediction_imgs, targets) * config.network.loss_scale_factor
+
+                self.log_step_loss(loss=loss.item(), step_idx=idx + 1)
+                self.avg_step_loss = .0
+
+        logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
+        self.log_epoch_loss()
+        self.avg_epoch_loss = .0
 
     def set_model(self):
-        self.model = NICE(prior=self.prior,
-                          coupling=config.nice.coupling,
-                          in_out_dim=self.full_dim,
-                          mid_dim=config.nice.mid_dim,
-                          hidden=self.hidden,
-                          mask_config=config.nice.mask_config)
+        self.model = LMImgEncoder(config.network.latent_size)
         self.model = self.model_util.set_model_device(self.model)
         self.model = self.model_util.set_model_parallel_gpu(self.model)
-        '''Prior Model
+        '''PC Decoder
         '''
-        self.prior_model = LMNetAE(config.dataset.resample_amount)
-        self.prior_model = self.model_util.set_model_device(self.prior_model)
-        self.prior_model = self.model_util.set_model_parallel_gpu(self.prior_model)
-        self.prior_model = self.model_util.load_prior_model(self.prior_model)
-        # '''PC Decoder
-        # '''
-        # self.pc_decoder = prior_model.module.decoder
+        prior_model = LMNetAE(config.dataset.resample_amount)
+        prior_model = self.model_util.set_model_device(prior_model)
+        prior_model = self.model_util.set_model_parallel_gpu(prior_model)
+        prior_model = self.model_util.load_prior_model(prior_model)
+        self.pc_decoder = prior_model.module.decoder
+        '''NICE
+        '''
+        self.flow = NICE(prior=self.prior,
+                         coupling=config.nice.coupling,
+                         in_out_dim=self.full_dim,
+                         mid_dim=config.nice.mid_dim,
+                         hidden=self.hidden,
+                         mask_config=config.nice.mask_config)
+        self.flow = self.model_util.set_model_device(self.flow)
+        self.flow = self.model_util.set_model_parallel_gpu(self.flow)
+        self.flow = self.model_util.load_nice_model(self.flow)
+
+    def log_step_loss(self, loss, step_idx):
+        self.avg_step_loss += loss
+        self.avg_epoch_loss += loss
+
+        if step_idx % config.wandb.step_loss_freq == 0:
+            self.avg_step_loss /= config.wandb.step_loss_freq
+            logging.info('Epoch %d, %d Step, loss = %.6f' % (self._epoch, step_idx, self.avg_step_loss))
+
+            self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss, loss_name='cd')
 
     def log_epoch_loss(self):
         self.avg_epoch_loss /= config.dataset.dataset_size[self._data_type]
 
         logging.info('Logging Epoch Loss...')
-        if config.wandb.visual_flag:
-            if not config.dataset.test_unseen_flag:
-                self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='mse',
-                                               valid_epoch_loss=self.avg_epoch_loss)
-            if config.dataset.test_unseen_flag:
-                self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='unseen_mse',
-                                               valid_epoch_loss=self.avg_epoch_loss)
+        self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='cd',
+                                       valid_epoch_loss=self.avg_epoch_loss)
 
 
-def validNICE():
+def validImgNICE():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)-8s %(message)s',
                         datefmt='%Y-%m-%d %H:%M:%S')
     config.show_config()
@@ -177,10 +198,10 @@ def validNICE():
                                   batch_size=config.network.batch_size,
                                   shuffle=False,
                                   pin_memory=False,
-                                  num_workers=22)
-    valid_session = NICEValidSession(dataloader=valid_dataloader)
-    valid_session.validate()
+                                  num_workers=43)
+    train_session = ImgNICEValidSession(dataloader=valid_dataloader)
+    train_session.validate()
 
 
 if __name__ == '__main__':
-    validNICE()
+    validImgNICE()

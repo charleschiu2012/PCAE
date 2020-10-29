@@ -67,14 +67,15 @@ class Config:
                                      z_dim=argument.z_dim,
                                      epoch_num=argument.epoch_num,
                                      learning_rate=argument.learning_rate)
-        if argument.mode_flag == 'nice':
+        if argument.mode_flag == 'nice' or (argument.nice_epoch is not None):
             self.nice = NICEConfig(batch_size=argument.nice_batch_size,
                                    latent=argument.latent_distribution,
                                    mid_dim=argument.mid_dim,
                                    num_iters=argument.num_iters,
                                    sample_size=argument.num_sample,
                                    coupling=argument.coupling,
-                                   mask_config=argument.mask_config)
+                                   mask_config=argument.mask_config,
+                                   nice_epoch=argument.nice_epoch)
 
         self.wandb = WandbConfig(project_name=argument.project_name,
                                  run_name=argument.run_name,

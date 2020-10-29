@@ -6,7 +6,8 @@ class NICEConfig:
                  num_iters: int,
                  sample_size: int,
                  coupling: int,
-                 mask_config: float):
+                 mask_config: float,
+                 nice_epoch: int):
 
         self.batch_size = batch_size
         self.latent = latent
@@ -15,3 +16,4 @@ class NICEConfig:
         self.sample_size = sample_size
         self.coupling = coupling
         self.mask_config = mask_config
+        self.nice_epoch = nice_epoch

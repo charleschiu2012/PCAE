@@ -94,8 +94,6 @@ config = Config(argument)
 class NICEAEValidSession(Network):
     def __init__(self, dataloader, model=None):
         super().__init__(config=config, data_loader=dataloader, data_type='valid', epoch=1, model=model)
-        self._epoch_of_model = ''
-        self._epoch = 0
 
         self.avg_epoch_loss = 0.0
         self.avg_epoch_cd_loss = 0.0
@@ -119,9 +117,9 @@ class NICEAEValidSession(Network):
                                                        num_points=config.dataset.resample_amount))
 
     def validate(self):
+        self.set_model()
         for i, model_path in enumerate(self.models_path):
             self._epoch = self.model_util.get_epoch_num(model_path) - 1
-            self.set_model()
             self.model_util.test_trained_model(model=self.model, test_epoch=i + 1)
 
             self.model.eval()

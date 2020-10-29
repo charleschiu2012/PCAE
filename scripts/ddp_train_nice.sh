@@ -13,7 +13,7 @@ OMP_NUM_THREADS=1 python -m torch.distributed.launch --nproc_per_node=8 ddp_trai
 --prior_model "LMNetAE" \
 --img_encoder "LMImgEncoder" \
 --checkpoint_path "/data/LMNet-data/checkpoint/DDP/NICE" \
---prior_epoch "" \
+--prior_epoch "241" \
 --loss_scale_factor 10000 \
 --batch_size 32 \
 --latent_size 512 \

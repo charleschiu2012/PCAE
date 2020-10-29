@@ -7,7 +7,7 @@ from PCAE.config import Config
 from PCAE.dataloader import PCDataset
 from PCAE.jobs.networks.loss import chamfer_distance_loss, emd_loss
 from PCAE.jobs.networks import Network
-from PCAE.jobs.networks.models import PointNetAE, LMNetAE, LMImgEncoder, LMDecoder
+from PCAE.jobs.networks.models import PointNetAE, LMNetAE, LMImgEncoder
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
 
@@ -76,8 +76,6 @@ config = Config(argument)
 class LMValidSession(Network):
     def __init__(self, dataloader, model=None):
         super().__init__(config=config, data_loader=dataloader, data_type='valid', epoch=1, model=model)
-        self._pretrained_epoch = ''
-        self._is_scratch = False
 
         self.avg_epoch_l1_loss = .0
         self.avg_epoch_cd_loss = .0
@@ -90,9 +88,9 @@ class LMValidSession(Network):
                                           model=LMImgEncoder(config.dataset.resample_amount))
 
     def validate(self):
+        self.set_model()
         for i, model_path in enumerate(self.models_path):
             self._epoch = self.model_util.get_epoch_num(model_path) - 1
-            self.set_model()
             self.model_util.test_trained_model(model=self.model, test_epoch=i + 1)
 
             self.model.eval()
@@ -126,7 +124,6 @@ class LMValidSession(Network):
         self.model = models[config.network.img_encoder](config.dataset.resample_amount)
         self.model = self.model_util.set_model_device(self.model)
         self.model = self.model_util.set_model_parallel_gpu(self.model)
-        self._epoch = self.model_util.load_model_pretrain(self.model, self._pretrained_epoch, self._is_scratch)
         '''Prior Model
         '''
         self.prior_model = models[config.network.prior_model](config.dataset.resample_amount)
@@ -135,10 +132,7 @@ class LMValidSession(Network):
         self.prior_model = self.model_util.load_prior_model(self.prior_model)
         '''PC Decoder
         '''
-        self.decoder = LMDecoder(config.dataset.resample_amount)
-        self.decoder = self.model_util.set_model_device(self.decoder)
-        self.decoder = self.model_util.set_model_parallel_gpu(self.decoder)
-        self.decoder = self.model_util.load_partial_pretrained_model(self.prior_model, self.decoder, 'decoder')
+        self.decoder = self.prior_model.module.decoder
 
     def log_epoch_loss(self):
         self.avg_epoch_l1_loss /= config.dataset.dataset_size[self._data_type]
