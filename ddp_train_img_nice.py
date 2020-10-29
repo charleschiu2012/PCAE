@@ -167,7 +167,8 @@ class ImgNICETrainSession(Network):
         prior_model = self.model_util.set_model_device(prior_model)
         prior_model = self.model_util.set_model_parallel_gpu(prior_model)
         prior_model = self.model_util.load_prior_model(prior_model)
-        self.pc_decoder = prior_model.module.decoder
+        self.pc_decoder = self.model_util.freeze_model(prior_model.module.decoder)
+
         '''NICE
         '''
         self.flow = NICE(prior=self.prior,
@@ -179,6 +180,7 @@ class ImgNICETrainSession(Network):
         self.flow = self.model_util.set_model_device(self.flow)
         self.flow = self.model_util.set_model_parallel_gpu(self.flow)
         self.flow = self.model_util.load_nice_model(self.flow)
+        self.flow = self.model_util.freeze_model(self.flow)
 
     def log_step_loss(self, loss, step_idx):
         self.avg_step_loss += loss
