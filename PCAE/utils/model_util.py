@@ -84,34 +84,20 @@ class ModelUtil:
             model.load_state_dict(state_dict=torch.load(f=model_path, map_location=map_location))
         logging.info('Use %s to test' % model_path)
 
-    def load_prior_model(self, model):
-        prior_model_path = '../data/LMNet-data/checkpoint/DDP/LMNetAE/epoch%.3d.pth' % \
-                           int(self.config.network.prior_epoch)
-        # prior_model_path = '../data/LMNet-data/checkpoint/DDP/LMNetAE/epoch%.3d.pth' % \
-        #                    int(self.config.network.prior_epoch)
+    def load_trained_model(self, model, weight_path):
+        model = self.set_model_device(model)
+        model = self.set_model_parallel_gpu(model)
+        weight_path = '../data/LMNet-data/checkpoint/DDP/{}'.format(weight_path)
         if self.config.cuda.dataparallel_mode == 'Dataparallel':
-            model.load_state_dict(state_dict=torch.load(f=prior_model_path))
+            model.load_state_dict(state_dict=torch.load(f=weight_path))
         elif self.config.cuda.dataparallel_mode == 'DistributedDataParallel':
             # Use a barrier() to make sure that process 1 loads the model after process
             # 0 saves it.
             torch.distributed.barrier()
             # configure map_location properly
             map_location = {'cuda:%d' % 0: 'cuda:%d' % self.config.cuda.rank}
-            model.load_state_dict(state_dict=torch.load(f=prior_model_path, map_location=map_location))
-        return model
-
-    def load_nice_model(self, model):
-        nice_model_path = '../data/LMNet-data/checkpoint/DDP/NICE/epoch%.3d.pth' % \
-                           int(self.config.network.prior_epoch)
-        if self.config.cuda.dataparallel_mode == 'Dataparallel':
-            model.load_state_dict(state_dict=torch.load(f=nice_model_path))
-        elif self.config.cuda.dataparallel_mode == 'DistributedDataParallel':
-            # Use a barrier() to make sure that process 1 loads the model after process
-            # 0 saves it.
-            torch.distributed.barrier()
-            # configure map_location properly
-            map_location = {'cuda:%d' % 0: 'cuda:%d' % self.config.cuda.rank}
-            model.load_state_dict(state_dict=torch.load(f=nice_model_path, map_location=map_location))
+            model.load_state_dict(state_dict=torch.load(f=weight_path, map_location=map_location))
+        model = self.freeze_model(model)
         return model
 
     @staticmethod
@@ -127,20 +113,20 @@ class ModelUtil:
     def get_models_path(checkpoint_path):
         return sorted(glob('%s/epoch*' % checkpoint_path))
 
-    @staticmethod
-    def load_partial_pretrained_model(pretrained_model, apply_model, which_part: str):
-        import collections
-        apply_part = collections.OrderedDict()
-        for k, v in pretrained_model.state_dict().items():
-            if k.split('.')[1] == which_part:
-                key_name = 'module.' + k.split('.', 2)[2]
-                apply_part[key_name] = v
-
-        apply_model_dict = apply_model.state_dict()
-        apply_model_dict.update(apply_part)
-        apply_model.load_state_dict(apply_model_dict)
-
-        return apply_model
+    # @staticmethod
+    # def load_partial_pretrained_model(pretrained_model, apply_model, which_part: str):
+    #     import collections
+    #     apply_part = collections.OrderedDict()
+    #     for k, v in pretrained_model.state_dict().items():
+    #         if k.split('.')[1] == which_part:
+    #             key_name = 'module.' + k.split('.', 2)[2]
+    #             apply_part[key_name] = v
+    #
+    #     apply_model_dict = apply_model.state_dict()
+    #     apply_model_dict.update(apply_part)
+    #     apply_model.load_state_dict(apply_model_dict)
+    #
+    #     return apply_model
 
     @staticmethod
     def cleanup():

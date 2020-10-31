@@ -6,9 +6,9 @@ import torch.distributions as distributions
 
 from PCAE.config import Config
 from PCAE.dataloader import PCDataset
-from PCAE.jobs.networks import Network
-from PCAE.jobs.networks.models import LMNetAE, NICE, LMImgEncoder
-from PCAE.jobs.networks.loss import chamfer_distance_loss
+from PCAE.networks import Network
+from PCAE.models import LMNetAE, NICE, LMImgEncoder
+from PCAE.loss import chamfer_distance_loss
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
 
@@ -153,10 +153,9 @@ class ImgNICEValidSession(Network):
         '''PC Decoder
         '''
         prior_model = LMNetAE(config.dataset.resample_amount)
-        prior_model = self.model_util.set_model_device(prior_model)
-        prior_model = self.model_util.set_model_parallel_gpu(prior_model)
-        prior_model = self.model_util.load_prior_model(prior_model)
+        prior_model = self.model_util.load_trained_model(prior_model, config.network.prior_epoch)
         self.pc_decoder = prior_model.module.decoder
+        self.pc_decoder = self.model_util.freeze_model(self.model_util.set_model_parallel_gpu(self.pc_decoder))
         '''NICE
         '''
         self.flow = NICE(prior=self.prior,
@@ -165,9 +164,7 @@ class ImgNICEValidSession(Network):
                          mid_dim=config.nice.mid_dim,
                          hidden=self.hidden,
                          mask_config=config.nice.mask_config)
-        self.flow = self.model_util.set_model_device(self.flow)
-        self.flow = self.model_util.set_model_parallel_gpu(self.flow)
-        self.flow = self.model_util.load_nice_model(self.flow)
+        self.flow = self.model_util.load_trained_model(self.flow, config.network.prior_epoch)
 
     def log_step_loss(self, loss, step_idx):
         self.avg_step_loss += loss

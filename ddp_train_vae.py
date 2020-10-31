@@ -6,9 +6,9 @@ from torch.utils.data import DataLoader
 
 from PCAE.config import Config
 from PCAE.dataloader import PCDataset
-from PCAE.jobs.networks.loss import KLDLoss, chamfer_distance_loss
-from PCAE.jobs.networks import Network
-from PCAE.jobs.networks.models import PointNetAE, LMNetAE, LMImgEncoder, LMDecoder, ImgEncoderVAE
+from PCAE.loss import KLDLoss, chamfer_distance_loss
+from PCAE.networks import Network
+from PCAE.models import LMNetAE, ImgEncoderVAE
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
 
@@ -87,7 +87,7 @@ class VAETrainSession(Network):
         self.avg_step_kld_loss = 0.0
         self.avg_epoch_kld_loss = 0.0
         self.prior_model = None
-        self.decoder = None
+        self.pc_decoder = None
         self.model_util = ModelUtil(config=config)
         self.visualizer = None
         if config.cuda.dataparallel_mode == 'DistributedDataParallel':
@@ -102,7 +102,7 @@ class VAETrainSession(Network):
 
         self.model.train()
         self.prior_model.eval()
-        self.decoder.eval()
+        self.pc_decoder.eval()
         for epoch_idx in range(self._epoch - 1, config.network.epoch_num):
             logging.info('Start training epoch %d' % (epoch_idx + 1))
 
@@ -117,7 +117,7 @@ class VAETrainSession(Network):
                     latent_pc, _ = self.prior_model(inputs_pc)
                 latent_img, mu, log_var = self.model(inputs_img)
                 with torch.no_grad():
-                    re_imgs = self.decoder(latent_img)
+                    re_imgs = self.pc_decoder(latent_img)
 
                 kld_loss = KLDLoss(mu, log_var)
                 cd_loss = chamfer_distance_loss(re_imgs, targets)
@@ -146,22 +146,20 @@ class VAETrainSession(Network):
             self.model_util.cleanup()
 
     def set_model(self):
-        models = {'PointNetAE': PointNetAE, 'LMNetAE': LMNetAE, 'LMImgEncoder': LMImgEncoder}
-        '''Img Encoder
-        '''
+        """Img Encoder
+        """
         self.model = ImgEncoderVAE(latent_size=config.network.latent_size, z_dim=config.network.z_dim)
         self.model = self.model_util.set_model_device(self.model)
         self.model = self.model_util.set_model_parallel_gpu(self.model)
         self._epoch = self.model_util.load_model_pretrain(self.model, self._pretrained_epoch, self._is_scratch)
         '''Prior Model
         '''
-        self.prior_model = models[config.network.prior_model](config.dataset.resample_amount)
-        self.prior_model = self.model_util.set_model_device(self.prior_model)
-        self.prior_model = self.model_util.set_model_parallel_gpu(self.prior_model)
-        self.prior_model = self.model_util.load_prior_model(self.prior_model)
+        self.prior_model = LMNetAE(config.dataset.resample_amount)
+        self.prior_model = self.model_util.load_trained_model(self.prior_model, config.network.prior_epoch)
         '''PC Decoder
         '''
-        self.decoder = self.prior_model.module.decoder
+        self.pc_decoder = self.prior_model.module.decoder
+        self.pc_decoder = self.model_util.freeze_model(self.model_util.set_model_parallel_gpu(self.pc_decoder))
 
     def log_step_loss(self, sum_loss, cd_loss, kld_loss, step_idx):
         self.avg_step_loss += sum_loss

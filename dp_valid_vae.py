@@ -5,9 +5,9 @@ from torch.utils.data import DataLoader
 
 from PCAE.config import Config
 from PCAE.dataloader import PCDataset
-from PCAE.jobs.networks.loss import KLDLoss, chamfer_distance_loss, emd_loss
-from PCAE.jobs.networks import Network
-from PCAE.jobs.networks.models import PointNetAE, LMNetAE, LMImgEncoder, ImgEncoderVAE
+from PCAE.loss import KLDLoss, chamfer_distance_loss, emd_loss
+from PCAE.networks import Network
+from PCAE.models import LMNetAE, ImgEncoderVAE
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
 
@@ -81,7 +81,7 @@ class VAEValidSession(Network):
         self.avg_epoch_cd_loss = .0
         self.avg_epoch_emd_loss = .0
         self.prior_model = None
-        self.decoder = None
+        self.pc_decoder = None
         self.model_util = ModelUtil(config=config)
         self.models_path = self.model_util.get_models_path(config.network.checkpoint_path)
         self.visualizer = WandbVisualizer(config=config, job_type='valid',
@@ -95,14 +95,14 @@ class VAEValidSession(Network):
 
             self.model.eval()
             self.prior_model.eval()
-            self.decoder.eval()
+            self.pc_decoder.eval()
             final_step = 0
             with torch.no_grad():
                 for idx, (inputs_img, inputs_pc, targets, _, _) in enumerate(self.get_data()):
                     final_step = idx
                     latent_pc, _ = self.prior_model(inputs_pc)
                     latent_img, mu, log_var = self.model(inputs_img)
-                    re_imgs = self.decoder(latent_img)
+                    re_imgs = self.pc_decoder(latent_img)
 
                     kld_loss = KLDLoss(mu, log_var)
                     cd_loss = chamfer_distance_loss(re_imgs, targets)
@@ -118,21 +118,19 @@ class VAEValidSession(Network):
                 self.avg_epoch_emd_loss = .0
 
     def set_model(self):
-        models = {'PointNetAE': PointNetAE, 'LMNetAE': LMNetAE, 'LMImgEncoder': LMImgEncoder}
-        '''Img Encoder
-        '''
+        """Img Encoder
+        """
         self.model = ImgEncoderVAE(latent_size=config.network.latent_size, z_dim=config.network.z_dim)
         self.model = self.model_util.set_model_device(self.model)
         self.model = self.model_util.set_model_parallel_gpu(self.model)
         '''Prior Model
         '''
-        self.prior_model = models[config.network.prior_model](config.dataset.resample_amount)
-        self.prior_model = self.model_util.set_model_device(self.prior_model)
-        self.prior_model = self.model_util.set_model_parallel_gpu(self.prior_model)
-        self.prior_model = self.model_util.load_prior_model(self.prior_model)
+        self.prior_model = LMNetAE(config.dataset.resample_amount)
+        self.prior_model = self.model_util.load_trained_model(self.prior_model, config.network.prior_epoch)
         '''PC Decoder
         '''
-        self.decoder = self.prior_model.module.decoder
+        self.pc_decoder = self.prior_model.module.decoder
+        self.pc_decoder = self.model_util.freeze_model(self.model_util.set_model_parallel_gpu(self.pc_decoder))
 
     def log_epoch_loss(self):
         self.avg_epoch_kld_loss /= config.dataset.dataset_size[self._data_type]

@@ -6,9 +6,9 @@ import torch.distributions as distributions
 
 from PCAE.config import Config
 from PCAE.dataloader import PCDataset
-from PCAE.jobs.networks import Network
-from PCAE.jobs.networks.models import NiceAE
-from PCAE.jobs.networks.loss import chamfer_distance_loss
+from PCAE.networks import Network
+from PCAE.models import NiceAE
+from PCAE.loss import chamfer_distance_loss
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
 
@@ -98,7 +98,7 @@ class NICEAEValidSession(Network):
         self.avg_epoch_cd_loss = 0.0
         self.avg_epoch_log_prob_loss = 0.0
         self.prior_model = None
-        self.decoder = None
+        self.pc_decoder = None
         self.model_util = ModelUtil(config=config)
         self.models_path = self.model_util.get_models_path(config.network.checkpoint_path)
 

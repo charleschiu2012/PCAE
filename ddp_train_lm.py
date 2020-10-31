@@ -7,8 +7,8 @@ from torch.utils.data import DataLoader
 from PCAE.config import Config
 from PCAE.dataloader import PCDataset
 # from PCAE.jobs.networks.loss import chamfer_distance_loss, emd_loss
-from PCAE.jobs.networks import Network
-from PCAE.jobs.networks.models import LMNetAE, LMImgEncoder, LMDecoder
+from PCAE.networks import Network
+from PCAE.models import LMNetAE, LMImgEncoder
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
 
@@ -43,7 +43,7 @@ parser.add_argument('--prior_model', type=str, required=True,
                     help='Which point cloud autoencoder')
 parser.add_argument('--checkpoint_path', type=str, required=True,
                     help='Where to store/load weights')
-parser.add_argument('--prior_epoch', type=str, required=True, default='300',
+parser.add_argument('--prior_epoch', type=str, required=True, default='LMNetAE/epoch300.pth',
                     help='Which epoch of autoencoder to use to ImgEncoder')
 parser.add_argument('--loss_scale_factor', type=int, required=True, default=10000,
                     help='Scale your loss')
@@ -83,7 +83,7 @@ class LMTrainSession(Network):
         self.avg_step_loss = 0.0
         self.avg_epoch_loss = 0.0
         self.prior_model = None
-        self.decoder = None
+        self.pc_decoder = None
         self.model_util = ModelUtil(config=config)
         self.visualizer = None
         if config.cuda.dataparallel_mode == 'DistributedDataParallel':
@@ -97,6 +97,7 @@ class LMTrainSession(Network):
             self.visualizer = WandbVisualizer(config=config, job_type='train', model=self.model)
 
         self.model.train()
+        self.prior_model.eval()
         for epoch_idx in range(self._epoch - 1, config.network.epoch_num):
             logging.info('Start training epoch %d' % (epoch_idx + 1))
 
@@ -137,15 +138,11 @@ class LMTrainSession(Network):
         '''Prior Model
         '''
         self.prior_model = LMNetAE(config.dataset.resample_amount)
-        self.prior_model = self.model_util.set_model_device(self.prior_model)
-        self.prior_model = self.model_util.set_model_parallel_gpu(self.prior_model)
-        self.prior_model = self.model_util.load_prior_model(self.prior_model)
+        self.prior_model = self.model_util.load_trained_model(self.prior_model, config.network.prior_epoch)
         '''PC Decoder
         '''
-        self.decoder = LMDecoder(config.dataset.resample_amount)
-        self.decoder = self.model_util.set_model_device(self.decoder)
-        self.decoder = self.model_util.set_model_parallel_gpu(self.decoder)
-        self.decoder = self.model_util.load_partial_pretrained_model(self.prior_model, self.decoder, 'decoder')
+        self.pc_decoder = self.prior_model.module.decoder
+        self.pc_decoder = self.model_util.freeze_model(self.model_util.set_model_parallel_gpu(self.pc_decoder))
 
     def log_step_loss(self, loss, step_idx):
         self.avg_step_loss += loss

@@ -171,28 +171,28 @@ class NICE(nn.Module):
         return self.log_prob(x)
 
 
-if __name__ == '__main__':
-    device = torch.device("cuda:0")
-
-    # model hyperparameters
-    sample_size = 64
-    coupling = 4
-    mask_config = 1.
-
-    (full_dim, mid_dim, hidden) = (1 * 512, 128, 5)
-    prior = torch.distributions.Normal(
-        torch.tensor(0.).cuda(), torch.tensor(1.).cuda())
-
-    flow = NICE(prior=prior,
-                coupling=coupling,
-                in_out_dim=full_dim,
-                mid_dim=mid_dim,
-                hidden=hidden,
-                mask_config=mask_config).cuda()
-
-    # mean = torch.randn(24, 512, 1, 1)
-    inputs = torch.randn(24, 512).cuda()
-    # inputs = utils.prepare_data(inputs, dataset, zca=zca, mean=mean).to(device)
-    # log-likelihood of input minibatch
-    loss = -flow(inputs).mean()
-    print(loss)
+# if __name__ == '__main__':
+    # device = torch.device("cuda:0")
+    #
+    # # model hyperparameters
+    # sample_size = 64
+    # coupling = 4
+    # mask_config = 1.
+    #
+    # (full_dim, mid_dim, hidden) = (1 * 512, 128, 5)
+    # prior = torch.distributions.Normal(
+    #     torch.tensor(0.).cuda(), torch.tensor(1.).cuda())
+    #
+    # flow = NICE(prior=prior,
+    #             coupling=coupling,
+    #             in_out_dim=full_dim,
+    #             mid_dim=mid_dim,
+    #             hidden=hidden,
+    #             mask_config=mask_config).cuda()
+    #
+    # # mean = torch.randn(24, 512, 1, 1)
+    # inputs = torch.randn(24, 512).cuda()
+    # # inputs = utils.prepare_data(inputs, dataset, zca=zca, mean=mean).to(device)
+    # # log-likelihood of input minibatch
+    # loss = -flow(inputs).mean()
+    # print(loss)

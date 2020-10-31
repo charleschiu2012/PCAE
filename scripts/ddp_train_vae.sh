@@ -14,7 +14,7 @@ python ddp_train_vae.py \
 --prior_model "LMNetAE" \
 --img_encoder "ImgEncoderVAE" \
 --checkpoint_path "/data/LMNet-data/checkpoint/DDP/ImgEncoderVAE" \
---prior_epoch "300" \
+--prior_epoch "LMNetAE/epoch241.pth" \
 --loss_scale_factor 10000 \
 --batch_size 32 \
 --latent_size 512 \

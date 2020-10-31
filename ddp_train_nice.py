@@ -7,8 +7,8 @@ import torch.distributions as distributions
 
 from PCAE.config import Config
 from PCAE.dataloader import PCDataset
-from PCAE.jobs.networks import Network
-from PCAE.jobs.networks.models import LMNetAE, LMDecoder, NICE
+from PCAE.networks import Network
+from PCAE.models import LMNetAE, NICE
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
 
@@ -43,7 +43,7 @@ parser.add_argument('--prior_model', type=str, required=True,
                     help='Which point cloud autoencoder')
 parser.add_argument('--checkpoint_path', type=str, required=True,
                     help='Where to store/load weights')
-parser.add_argument('--prior_epoch', type=str, required=True, default='300',
+parser.add_argument('--prior_epoch', type=str, required=True, default='LMNetAE/epoch300.pth',
                     help='Which epoch of autoencoder to use to ImgEncoder')
 parser.add_argument('--loss_scale_factor', type=int, required=True, default=10000,
                     help='Scale your loss')
@@ -73,6 +73,8 @@ parser.add_argument('--coupling', type=int, required=True, default=4,
                     help='Number of coupling layers')
 parser.add_argument('--mask_config', type=float, required=True, default=1.,
                     help='mask_config')  # TODO
+parser.add_argument('--nice_epoch', type=str, default='NICE/epoch300.pth',
+                    help='Which epoch of NICE to use to ImgEncoder')
 '''wandb
 '''
 parser.add_argument('--project_name', type=str, required=True,
@@ -99,7 +101,7 @@ class NICETrainSession(Network):
         self.avg_step_loss = .0
         self.avg_epoch_loss = .0
         self.prior_model = None
-        self.decoder = None
+        self.pc_decoder = None
         self.model_util = ModelUtil(config=config)
         self.visualizer = None
         if config.cuda.dataparallel_mode == 'DistributedDataParallel':
@@ -161,15 +163,11 @@ class NICETrainSession(Network):
         '''Prior Model
         '''
         self.prior_model = LMNetAE(config.dataset.resample_amount)
-        self.prior_model = self.model_util.set_model_device(self.prior_model)
-        self.prior_model = self.model_util.set_model_parallel_gpu(self.prior_model)
-        self.prior_model = self.model_util.load_prior_model(self.prior_model)
+        self.prior_model = self.model_util.load_trained_model(self.prior_model, config.network.prior_epoch)
         # '''PC Decoder
         # '''
-        # self.decoder = LMDecoder(config.dataset.resample_amount)
-        # self.decoder = self.model_util.set_model_device(self.decoder)
-        # self.decoder = self.model_util.set_model_parallel_gpu(self.decoder)
-        # self.decoder = self.model_util.load_partial_pretrained_model(self.prior_model, self.decoder, 'decoder')
+        # self.pc_decoder = self.prior_model.module.decoder
+        # self.pc_decoder = self.model_util.freeze_model(self.model_util.set_model_parallel_gpu(self.pc_decoder))
 
     def log_step_loss(self, loss, step_idx):
         self.avg_step_loss += loss

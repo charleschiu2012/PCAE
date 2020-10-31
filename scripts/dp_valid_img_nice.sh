@@ -12,7 +12,7 @@ python ddp_train_img_nice.py \
 --prior_model "LMNetAE" \
 --img_encoder "LMImgEncoder" \
 --checkpoint_path "/data/LMNet-data/checkpoint/DDP/ImgNICE" \
---prior_epoch "241" \
+--prior_epoch "LMNetAE/epoch241.pth" \
 --loss_scale_factor 10000 \
 --batch_size 32 \
 --latent_size 512 \

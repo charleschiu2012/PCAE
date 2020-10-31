@@ -6,8 +6,8 @@ import torch.distributions as distributions
 
 from PCAE.config import Config
 from PCAE.dataloader import PCDataset
-from PCAE.jobs.networks import Network
-from PCAE.jobs.networks.models import LMNetAE, NICE
+from PCAE.networks import Network
+from PCAE.models import LMNetAE, NICE
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
 
@@ -99,7 +99,7 @@ class NICEValidSession(Network):
 
         self.avg_epoch_loss = .0
         self.prior_model = None
-        # self.decoder = None
+        # self.pc_decoder = None
         self.model_util = ModelUtil(config=config)
         self.models_path = self.model_util.get_models_path(config.network.checkpoint_path)
         self.visualizer = WandbVisualizer(config=config, job_type='valid',
@@ -118,7 +118,7 @@ class NICEValidSession(Network):
 
             self.model.eval()
             self.prior_model.eval()
-            # self.decoder.eval()
+            # self.pc_decoder.eval()
             final_step = 0
             with torch.no_grad():
                 for idx, (inputs_pc, targets, pc_ids) in enumerate(self.get_data()):
@@ -146,12 +146,11 @@ class NICEValidSession(Network):
         '''Prior Model
         '''
         self.prior_model = LMNetAE(config.dataset.resample_amount)
-        self.prior_model = self.model_util.set_model_device(self.prior_model)
-        self.prior_model = self.model_util.set_model_parallel_gpu(self.prior_model)
-        self.prior_model = self.model_util.load_prior_model(self.prior_model)
+        self.prior_model = self.model_util.load_trained_model(self.prior_model, config.network.prior_epoch)
         # '''PC Decoder
         # '''
-        # self.pc_decoder = prior_model.module.decoder
+        # self.pc_decoder = self.prior_model.module.decoder
+        # self.pc_decoder = self.model_util.freeze_model(self.model_util.set_model_parallel_gpu(self.pc_decoder))
 
     def log_epoch_loss(self):
         self.avg_epoch_loss /= config.dataset.dataset_size[self._data_type]

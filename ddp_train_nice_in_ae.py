@@ -7,9 +7,9 @@ import torch.distributions as distributions
 
 from PCAE.config import Config
 from PCAE.dataloader import PCDataset
-from PCAE.jobs.networks import Network
-from PCAE.jobs.networks.models import NiceAE
-from PCAE.jobs.networks.loss import chamfer_distance_loss
+from PCAE.networks import Network
+from PCAE.models import NiceAE
+from PCAE.loss import chamfer_distance_loss
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
 

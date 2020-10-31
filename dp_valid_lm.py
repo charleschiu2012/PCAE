@@ -5,9 +5,9 @@ from torch.utils.data import DataLoader
 
 from PCAE.config import Config
 from PCAE.dataloader import PCDataset
-from PCAE.jobs.networks.loss import chamfer_distance_loss, emd_loss
-from PCAE.jobs.networks import Network
-from PCAE.jobs.networks.models import PointNetAE, LMNetAE, LMImgEncoder
+from PCAE.loss import chamfer_distance_loss, emd_loss
+from PCAE.networks import Network
+from PCAE.models import PointNetAE, LMNetAE, LMImgEncoder
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
 
@@ -81,7 +81,7 @@ class LMValidSession(Network):
         self.avg_epoch_cd_loss = .0
         self.avg_epoch_emd_loss = .0
         self.prior_model = None
-        self.decoder = None
+        self.pc_decoder = None
         self.model_util = ModelUtil(config=config)
         self.models_path = self.model_util.get_models_path(config.network.checkpoint_path)
         self.visualizer = WandbVisualizer(config=config, job_type='valid',
@@ -95,7 +95,7 @@ class LMValidSession(Network):
 
             self.model.eval()
             self.prior_model.eval()
-            self.decoder.eval()
+            self.pc_decoder.eval()
             final_step = 0
             with torch.no_grad():
                 for idx, (inputs_img, inputs_pc, targets, _, _) in enumerate(self.get_data()):
@@ -104,7 +104,7 @@ class LMValidSession(Network):
                     latent_pc, _ = self.prior_model(inputs_pc)
                     l1_loss = torch.nn.L1Loss()(latent_img, latent_pc) * config.network.loss_scale_factor
 
-                    re_imgs = self.decoder(latent_img)
+                    re_imgs = self.pc_decoder(latent_img)
                     cd_loss = chamfer_distance_loss(re_imgs, targets)
                     _emd_loss = emd_loss(re_imgs, targets)
                     self.avg_epoch_l1_loss += l1_loss.item()
@@ -126,13 +126,12 @@ class LMValidSession(Network):
         self.model = self.model_util.set_model_parallel_gpu(self.model)
         '''Prior Model
         '''
-        self.prior_model = models[config.network.prior_model](config.dataset.resample_amount)
-        self.prior_model = self.model_util.set_model_device(self.prior_model)
-        self.prior_model = self.model_util.set_model_parallel_gpu(self.prior_model)
-        self.prior_model = self.model_util.load_prior_model(self.prior_model)
+        self.prior_model = LMNetAE(config.dataset.resample_amount)
+        self.prior_model = self.model_util.load_trained_model(self.prior_model, config.network.prior_epoch)
         '''PC Decoder
         '''
-        self.decoder = self.prior_model.module.decoder
+        self.pc_decoder = self.prior_model.module.decoder
+        self.pc_decoder = self.model_util.freeze_model(self.model_util.set_model_parallel_gpu(self.pc_decoder))
 
     def log_epoch_loss(self):
         self.avg_epoch_l1_loss /= config.dataset.dataset_size[self._data_type]

@@ -6,9 +6,9 @@ from torch.utils.data import DataLoader
 
 from PCAE.config import Config
 from PCAE.dataloader import PCDataset
-from PCAE.jobs.networks.loss import chamfer_distance_loss
-from PCAE.jobs.networks import Network
-from PCAE.jobs.networks.models import PointNetAE, LMNetAE, LMImgEncoder
+from PCAE.loss import chamfer_distance_loss
+from PCAE.networks import Network
+from PCAE.models import PointNetAE, LMNetAE, LMImgEncoder
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
 
@@ -57,6 +57,8 @@ parser.add_argument('--epoch_num', type=int, required=True, default=300,
                     help='How many epoch to train')
 parser.add_argument('--learning_rate', type=float, required=True,
                     help='Learning rate')
+parser.add_argument('--nice_epoch', type=int,
+                    help='Which epoch of NICE to use to ImgEncoder')
 '''wandb
 '''
 parser.add_argument('--project_name', type=str, required=True,

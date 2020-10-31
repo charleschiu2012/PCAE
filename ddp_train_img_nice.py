@@ -7,9 +7,9 @@ import torch.distributions as distributions
 
 from PCAE.config import Config
 from PCAE.dataloader import PCDataset
-from PCAE.jobs.networks import Network
-from PCAE.jobs.networks.models import LMNetAE, NICE, LMImgEncoder, LMDecoder
-from PCAE.jobs.networks.loss import chamfer_distance_loss
+from PCAE.networks import Network
+from PCAE.models import LMNetAE, NICE, LMImgEncoder
+from PCAE.loss import chamfer_distance_loss
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
 
@@ -46,7 +46,7 @@ parser.add_argument('--prior_model', type=str, required=True,
                     help='Which point cloud autoencoder')
 parser.add_argument('--checkpoint_path', type=str, required=True,
                     help='Where to store/load weights')
-parser.add_argument('--prior_epoch', type=str, required=True, default='300',
+parser.add_argument('--prior_epoch', type=str, required=True, default='LMNetAE/epoch300.pth',
                     help='Which epoch of autoencoder to use to ImgEncoder')
 parser.add_argument('--loss_scale_factor', type=int, required=True, default=10000,
                     help='Scale your loss')
@@ -76,7 +76,7 @@ parser.add_argument('--coupling', type=int, required=True, default=4,
                     help='Number of coupling layers')
 parser.add_argument('--mask_config', type=float, required=True, default=1.,
                     help='mask_config')  # TODO
-parser.add_argument('--nice_epoch', type=int,
+parser.add_argument('--nice_epoch', type=str, default='NICE/epoch300.pth',
                     help='Which epoch of NICE to use to ImgEncoder')
 '''wandb
 '''
@@ -144,16 +144,6 @@ class ImgNICETrainSession(Network):
                 loss = chamfer_distance_loss(prediction_imgs, targets) * config.network.loss_scale_factor
 
                 loss.backward()
-                # print(self.flow)
-                # print(self.pc_decoder)
-                # exit(1)
-                # print(self.model.module.conv1)
-                # print(self.flow.module.coupling[0].in_block[0].weight.grad)
-                # wandb.log({'flow.module.coupling[0].in_block[0].weight.grad':
-                #                self.flow.module.coupling[0].in_block[0].weight.grad.sum().item(),
-                #            'step': idx})
-                # print(self.model.module.conv1.weight.grad)
-                # print(self.pc_decoder.module.fc1.weight.grad)
                 wandb.log({'pc_decoder.fc1.weight.grad': self.pc_decoder.module.fc1.weight.grad.sum().item(),
                            'step': idx})
                 self.optimizer.step()
@@ -178,16 +168,9 @@ class ImgNICETrainSession(Network):
         '''PC Decoder
         '''
         prior_model = LMNetAE(config.dataset.resample_amount)
-        prior_model = self.model_util.set_model_device(prior_model)
-        prior_model = self.model_util.set_model_parallel_gpu(prior_model)
-        prior_model = self.model_util.load_prior_model(prior_model)
-        decoder = LMDecoder(config.dataset.resample_amount)
-        decoder = self.model_util.set_model_device(decoder)
-        decoder = self.model_util.set_model_parallel_gpu(decoder)
-        self.pc_decoder = self.model_util.load_partial_pretrained_model(prior_model, decoder,
-                                                                        which_part='decoder')
-        # self.pc_decoder = prior_model.module.decoder
-        # self.pc_decoder = self.model_util.freeze_model(prior_model.module.decoder)
+        prior_model = self.model_util.load_trained_model(prior_model, config.network.prior_epoch)
+        self.pc_decoder = prior_model.module.decoder
+        self.pc_decoder = self.model_util.freeze_model(self.model_util.set_model_parallel_gpu(self.pc_decoder))
 
         '''NICE
         '''
@@ -197,10 +180,7 @@ class ImgNICETrainSession(Network):
                          mid_dim=config.nice.mid_dim,
                          hidden=self.hidden,
                          mask_config=config.nice.mask_config)
-        self.flow = self.model_util.set_model_device(self.flow)
-        self.flow = self.model_util.set_model_parallel_gpu(self.flow)
-        self.flow = self.model_util.load_nice_model(self.flow)
-        # self.flow = self.model_util.freeze_model(self.flow)
+        self.flow = self.model_util.load_trained_model(self.flow, config.nice.nice_epoch)
 
     def log_step_loss(self, loss, step_idx):
         self.avg_step_loss += loss
