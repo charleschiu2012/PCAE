@@ -139,7 +139,7 @@ class ImgNICEValidSession(Network):
 
                 loss = chamfer_distance_loss(prediction_imgs, targets) * config.network.loss_scale_factor
 
-                self.log_step_loss(loss=loss.item(), step_idx=idx + 1)
+                self.log_step_loss(loss=loss.item() / config.network.loss_scale_factor, step_idx=idx + 1)
                 self.avg_step_loss = .0
 
         logging.info('Epoch %d, %d Step' % (self._epoch, final_step))

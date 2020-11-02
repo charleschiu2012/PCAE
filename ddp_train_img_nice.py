@@ -9,11 +9,8 @@ from PCAE.config import Config
 from PCAE.dataloader import PCDataset
 from PCAE.networks import Network
 from PCAE.models import LMNetAE, NICE, LMImgEncoder
-from PCAE.loss import chamfer_distance_loss
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
-
-import wandb
 
 parser = argparse.ArgumentParser()
 
@@ -103,8 +100,8 @@ class ImgNICETrainSession(Network):
 
         self.avg_step_loss = .0
         self.avg_epoch_loss = .0
-        self.flow = None
-        self.pc_decoder = None
+        self.pc_flow = None
+        self.prior_model = None
         self.model_util = ModelUtil(config=config)
         self.visualizer = None
         if config.cuda.dataparallel_mode == 'DistributedDataParallel':
@@ -123,8 +120,8 @@ class ImgNICETrainSession(Network):
             self.visualizer = WandbVisualizer(config=config, job_type='train', model=self.model)
 
         self.model.train()
-        self.pc_decoder.eval()
-        self.flow.eval()
+        self.prior_model.eval()
+        self.pc_flow.eval()
         for epoch_idx in range(self._epoch - 1, config.network.epoch_num):
             logging.info('Start training epoch %d' % (epoch_idx + 1))
 
@@ -136,23 +133,22 @@ class ImgNICETrainSession(Network):
                 final_step = idx
                 self.optimizer.zero_grad()
                 latent_imgs = self.model(inputs_img)
+                img_log_prob_loss = -self.pc_flow(latent_imgs).mean()
 
-                # z, _ = self.flow.module.f(latent_imgs)
-                # re_latents = self.flow.module.g(z)
-                prediction_imgs = self.pc_decoder(latent_imgs)
+                with torch.no_grad():
+                    latent_pcs, _ = self.prior_model(inputs_pc)
+                    pc_log_prob_loss = -self.pc_flow(latent_pcs).mean()
 
-                loss = chamfer_distance_loss(prediction_imgs, targets) * config.network.loss_scale_factor
+                loss = torch.nn.MSELoss()(img_log_prob_loss, pc_log_prob_loss) * config.network.loss_scale_factor
 
                 loss.backward()
-                wandb.log({'pc_decoder.fc1.weight.grad': self.pc_decoder.module.fc1.weight.grad.sum().item(),
-                           'step': idx})
                 self.optimizer.step()
 
                 self.log_step_loss(loss=loss.item(), step_idx=idx + 1)
                 self.avg_step_loss = .0
 
             logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
-            # self.save_model()
+            self.save_model()
             self.log_epoch_loss()
             self.avg_epoch_loss = .0
             self._epoch += 1
@@ -161,26 +157,19 @@ class ImgNICETrainSession(Network):
             self.model_util.cleanup()
 
     def set_model(self):
-        self.model = LMImgEncoder(config.network.latent_size)
+        self.model = LMImgEncoder(latent_size=config.network.latent_size)
         self.model = self.model_util.set_model_device(self.model)
         self.model = self.model_util.set_model_parallel_gpu(self.model)
         self._epoch = self.model_util.load_model_pretrain(self.model, self._pretrained_epoch, self._is_scratch)
-        '''PC Decoder
-        '''
-        prior_model = LMNetAE(config.dataset.resample_amount)
-        prior_model = self.model_util.load_trained_model(prior_model, config.network.prior_epoch)
-        self.pc_decoder = prior_model.module.decoder
-        self.pc_decoder = self.model_util.freeze_model(self.model_util.set_model_parallel_gpu(self.pc_decoder))
-
-        '''NICE
-        '''
-        self.flow = NICE(prior=self.prior,
-                         coupling=config.nice.coupling,
-                         in_out_dim=self.full_dim,
-                         mid_dim=config.nice.mid_dim,
-                         hidden=self.hidden,
-                         mask_config=config.nice.mask_config)
-        self.flow = self.model_util.load_trained_model(self.flow, config.nice.nice_epoch)
+        """Prior Model
+        """
+        self.prior_model = LMNetAE(config.dataset.resample_amount)
+        self.prior_model = self.model_util.load_trained_model(self.prior_model, config.network.prior_epoch)
+        """NICE
+        """
+        self.pc_flow = NICE(prior=self.prior, coupling=config.nice.coupling, in_out_dim=self.full_dim,
+                            mid_dim=config.nice.mid_dim, hidden=self.hidden, mask_config=config.nice.mask_config)
+        self.pc_flow = self.model_util.load_trained_model(self.pc_flow, config.nice.nice_epoch)
 
     def log_step_loss(self, loss, step_idx):
         self.avg_step_loss += loss
@@ -191,9 +180,9 @@ class ImgNICETrainSession(Network):
             logging.info('Epoch %d, %d Step, loss = %.6f' % (self._epoch, step_idx, self.avg_step_loss))
 
             if ((argument.local_rank is not None) and config.cuda.rank[0] == 0) and config.wandb.visual_flag:
-                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss, loss_name='cd')
+                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss, loss_name='log_prob_mse')
             elif (argument.local_rank is None) and config.wandb.visual_flag:
-                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss, loss_name='cd')
+                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss, loss_name='log_prob_mse')
 
     def log_epoch_loss(self):
         if config.cuda.dataparallel_mode == 'Dataparallel':
@@ -203,10 +192,10 @@ class ImgNICETrainSession(Network):
 
         logging.info('Logging Epoch Loss...')
         if ((argument.local_rank is not None) and config.cuda.rank[0] == 0) and config.wandb.visual_flag:
-            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='cd',
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='log_prob_mse',
                                            train_epoch_loss=self.avg_epoch_loss)
         elif (argument.local_rank is None) and config.wandb.visual_flag:
-            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='cd',
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='log_prob_mse',
                                            train_epoch_loss=self.avg_epoch_loss)
 
 
