@@ -44,8 +44,7 @@ class WandbVisualizer:
                    config=self.wandb_config,
                    dir=self.config.wandb.dir_path,
                    job_type=self.job_type,
-                   reinit=True,
-                   force=False)
+                   reinit=True)
 
     def watch_model(self):
         wandb.watch(self._model)

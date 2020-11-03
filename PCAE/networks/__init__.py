@@ -31,7 +31,10 @@ class Network:
 
                 yield inputs_pc, targets, pc_id
             elif (self.config.network.mode_flag == 'lm') or (self.config.network.mode_flag == 'vae'):
-                inputs_img, inputs_pc, targets = data[0].to(device).float().permute(0, 3, 1, 2).contiguous(), \
+                # inputs_img, inputs_pc, targets = data[0].to(device).float().permute(0, 3, 1, 2).contiguous(), \
+                #                                  data[1].to(device).float().permute(0, 2, 1).contiguous(), \
+                #                                  data[2].to(device).float()
+                inputs_img, inputs_pc, targets = data[0].to(device).float().contiguous(), \
                                                  data[1].to(device).float().permute(0, 2, 1).contiguous(), \
                                                  data[2].to(device).float()
 

@@ -5,6 +5,7 @@ import numpy as np
 import copy
 import itertools
 import cv2
+from PIL import Image
 import random
 from torchvision import transforms
 from torch.utils.data import Dataset
@@ -61,19 +62,22 @@ class PCDataset(Dataset):
 
     def get_img(self, item):
         img_path = self.dataset_loader.split_render_dataset_path[item][1]
-        img = cv2.imread(img_path, cv2.IMREAD_COLOR)[4:-5, 4:-5, :3]
+        # img = cv2.imread(img_path, cv2.IMREAD_COLOR)[4:-5, 4:-5, :3]
+        img = Image.open(img_path).convert('RGB')
 
         img_id = '/'.join(img_path.split('/')[6:10]).split('.')[0]
 
         # assert isinstance(img, np.ndarray)
         # assert img.shape[0] > 0
 
-        # transform = transforms.Compose([
-        #     transforms.ToTensor(),
-        #     transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
-        # ])
+        transform = transforms.Compose([
+            transforms.Resize(224),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406],
+                                 std=[0.229, 0.224, 0.225])
+        ])
 
-        # img = transform(img)
+        img = transform(img)
 
         return img, img_id
 

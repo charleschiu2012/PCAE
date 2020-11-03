@@ -40,6 +40,7 @@ class Config:
                                parallel_gpu_ids=usable_gpu_ids[:int(argument.gpu_usage)],
                                dataparallel_mode=argument.dataparallel_mode)  # Dataparallel DistributedDataParallel
         # OMP_NUM_THREADS=1 python -m torch.distributed.launch --nproc_per_node=8 main.py
+        # kill $(ps aux | grep "train.py" | grep -v grep | awk '{print $2}')
 
         dataset_size_list = argument.dataset_size.split('/')
         if argument.train_half_class is not None:

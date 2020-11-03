@@ -12,13 +12,13 @@ OMP_NUM_THREADS=1 python -m torch.distributed.launch --nproc_per_node=8 ddp_trai
 --mode_flag "lm" \
 --prior_model "LMNetAE" \
 --img_encoder "LMImgEncoder" \
---checkpoint_path "/data/LMNet-data/checkpoint/DDP/ImgNICE" \
+--checkpoint_path "/data/LMNet-data/checkpoint/DDP/ImgNICE_resnet50" \
 --prior_epoch "LMNetAE/epoch241.pth" \
 --loss_scale_factor 10000 \
 --batch_size 32 \
 --latent_size 512 \
 --epoch_num 300 \
---learning_rate 1e-3 \
+--learning_rate 5e-5 \
 --nice_batch_size 32 \
 --latent_distribution "normal" \
 --mid_dim 128 \
@@ -28,7 +28,7 @@ OMP_NUM_THREADS=1 python -m torch.distributed.launch --nproc_per_node=8 ddp_trai
 --mask_config 1. \
 --nice_epoch "NICE/epoch300.pth" \
 --project_name "Analogy" \
---run_name "ImgNICE" \
+--run_name "ImgNICE_resnet50" \
 --machine_id "TWCC" \
 --step_loss_freq 500 \
 --visual_flag

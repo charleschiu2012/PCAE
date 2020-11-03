@@ -4,6 +4,7 @@ import torch
 import numpy as np
 from torch.utils.data import DataLoader
 import torch.distributions as distributions
+import torchvision.models as models
 
 from PCAE.config import Config
 from PCAE.dataloader import PCDataset
@@ -157,7 +158,9 @@ class ImgNICETrainSession(Network):
             self.model_util.cleanup()
 
     def set_model(self):
-        self.model = LMImgEncoder(latent_size=config.network.latent_size)
+        # self.model = LMImgEncoder(latent_size=config.network.latent_size)
+        self.model = torch.nn.Sequential(models.resnet50(pretrained=True),
+                                         torch.nn.Linear(1000, config.network.latent_size))
         self.model = self.model_util.set_model_device(self.model)
         self.model = self.model_util.set_model_parallel_gpu(self.model)
         self._epoch = self.model_util.load_model_pretrain(self.model, self._pretrained_epoch, self._is_scratch)
