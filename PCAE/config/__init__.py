@@ -70,6 +70,7 @@ class Config:
                                      learning_rate=argument.learning_rate)
         if argument.mode_flag == 'nice' or (argument.nice_epoch is not None):
             self.nice = NICEConfig(batch_size=argument.nice_batch_size,
+                                   learning_rate=argument.nice_lr,
                                    latent=argument.latent_distribution,
                                    mid_dim=argument.mid_dim,
                                    num_iters=argument.num_iters,

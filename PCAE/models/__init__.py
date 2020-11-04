@@ -2,6 +2,6 @@
 
 from .model_2d import LMImgEncoder, ImgEncoderVAE
 from .model_3d import LMEncoder, LMDecoder, PointNetfeat, PointDecoder, LMNetAE, PointNetAE
-from .nice import NICE
+from .nice import NICE, ImgNICE
 from .nice_in_ae import NiceAE
 

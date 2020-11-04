@@ -7,7 +7,7 @@ from PCAE.config import Config
 from PCAE.dataloader import PCDataset
 from PCAE.loss import chamfer_distance_loss, emd_loss
 from PCAE.networks import Network
-from PCAE.models import PointNetAE, LMNetAE, LMImgEncoder
+from PCAE.models import LMNetAE, LMImgEncoder
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
 
@@ -50,12 +50,13 @@ parser.add_argument('--batch_size', type=int, required=True, default=32,
                     help='Batch size of point cloud or image')
 parser.add_argument('--latent_size', type=int, required=True, default=512,
                     help='Size of latent')
-parser.add_argument('--z_dim', type=int, required=True, default=512,
+parser.add_argument('--z_dim', type=int, default=512,
                     help='Size of vae latent')  # TODO
 parser.add_argument('--epoch_num', type=int, required=True, default=300,
                     help='How many epoch to train')
 parser.add_argument('--learning_rate', type=float, required=True, default=5e-5,
                     help='Learning rate')
+parser.add_argument('--nice_epoch', type=str, default=None)
 '''wandb
 '''
 parser.add_argument('--project_name', type=str, required=True, default='PCLM',
@@ -102,7 +103,7 @@ class LMValidSession(Network):
                     final_step = idx
                     latent_img = self.model(inputs_img)
                     latent_pc, _ = self.prior_model(inputs_pc)
-                    l1_loss = torch.nn.L1Loss()(latent_img, latent_pc) * config.network.loss_scale_factor
+                    l1_loss = torch.nn.L1Loss()(latent_img, latent_pc)
 
                     re_imgs = self.pc_decoder(latent_img)
                     cd_loss = chamfer_distance_loss(re_imgs, targets)
@@ -118,10 +119,7 @@ class LMValidSession(Network):
             self.avg_epoch_emd_loss = .0
 
     def set_model(self):
-        models = {'PointNetAE': PointNetAE, 'LMNetAE': LMNetAE, 'LMImgEncoder': LMImgEncoder}
-        '''Img Encoder
-        '''
-        self.model = models[config.network.img_encoder](config.dataset.resample_amount)
+        self.model = LMImgEncoder(latent_size=config.network.latent_size)
         self.model = self.model_util.set_model_device(self.model)
         self.model = self.model_util.set_model_parallel_gpu(self.model)
         '''Prior Model

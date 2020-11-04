@@ -3,6 +3,7 @@
 
 import torch
 import torch.nn as nn
+import torch.distributions
 
 """Additive coupling layer.
 """
@@ -169,6 +170,85 @@ class NICE(nn.Module):
             log-likelihood of input.
         """
         return self.log_prob(x)
+
+
+class ImgNICE(nn.Module):
+    def __init__(self, coupling, in_out_dim, mid_dim, hidden, mask_config):
+        """Initialize a NICE.
+        Args:
+            coupling: number of coupling layers.
+            in_out_dim: input/output dimensions.
+            mid_dim: number of units in a hidden layer.
+            hidden: number of hidden layers.
+            mask_config: 1 if transform odd units, 0 if transform even units.
+        """
+        super(ImgNICE, self).__init__()
+        self.in_out_dim = in_out_dim
+
+        self.coupling = nn.ModuleList([
+            Coupling(in_out_dim=in_out_dim,
+                     mid_dim=mid_dim,
+                     hidden=hidden,
+                     mask_config=(mask_config + i) % 2) for i in range(coupling)])
+        self.scaling = Scaling(in_out_dim)
+
+    def g(self, z):
+        """Transformation g: Z -> X (inverse of f).
+        Args:
+            z: tensor in latent space Z.
+        Returns:
+            transformed tensor in data space X.
+        """
+        x, _ = self.scaling(z, reverse=True)
+        for i in reversed(range(len(self.coupling))):
+            x = self.coupling[i](x, reverse=True)
+        return x
+
+    def f(self, x):
+        """Transformation f: X -> Z (inverse of g).
+        Args:
+            x: tensor in data space X.
+        Returns:
+            transformed tensor in latent space Z.
+        """
+        for i in range(len(self.coupling)):
+            x = self.coupling[i](x)
+        return self.scaling(x)
+
+    def log_prob(self, x, prior_mu):
+        """Computes data log-likelihood.
+        (See Section 3.3 in the NICE paper.)
+        Args:
+            x: input minibatch.
+            prior_mu: the mean of the distribution from pointcloud.
+        Returns:
+            log-likelihood of input.
+        """
+        z, log_det_J = self.f(x)
+        prior_pc = torch.distributions.Normal(prior_mu, torch.tensor(0.01).cuda())
+
+        log_ll = torch.sum(prior_pc.log_prob(z), dim=1)
+        return log_ll + log_det_J
+
+    def sample(self, size):
+        """Generates samples.
+        Args:
+            size: number of samples to generate.
+        Returns:
+            samples from the data space X.
+        """
+        z = self.prior.sample((size, self.in_out_dim)).cuda()
+        return self.g(z)
+
+    def forward(self, x, prior_mu):
+        """Forward pass.
+        Args:
+            x: input minibatch.
+            prior_mu: the mean of the distribution from pointcloud.
+        Returns:
+            log-likelihood of input.
+        """
+        return self.log_prob(x, prior_mu)
 
 
 # if __name__ == '__main__':

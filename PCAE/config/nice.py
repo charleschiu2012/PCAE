@@ -1,6 +1,7 @@
 class NICEConfig:
     def __init__(self,
                  batch_size: int,
+                 learning_rate: float,
                  latent: str,
                  mid_dim: int,
                  num_iters: int,
@@ -10,6 +11,7 @@ class NICEConfig:
                  nice_epoch: int):
 
         self.batch_size = batch_size
+        self.learning_rate = learning_rate
         self.latent = latent
         self.mid_dim = mid_dim
         self.num_iters = num_iters

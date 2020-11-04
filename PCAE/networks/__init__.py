@@ -1,5 +1,4 @@
 # PCAE/networks/__init__
-import os
 import torch
 
 
@@ -11,16 +10,6 @@ class Network:
         self._data_type = data_type
         self._epoch = epoch
 
-        self._features = None
-
-    def save_model(self):
-        os.makedirs(self.config.network.checkpoint_path, exist_ok=True)
-        model_path = '%s/epoch%.3d.pth' % (self.config.network.checkpoint_path, int(self._epoch))
-        if self.config.cuda.dataparallel_mode == 'Dataparallel':
-            torch.save(self.model.state_dict(), model_path)
-        if self.config.cuda.dataparallel_mode == 'DistributedDataParallel' and self.config.cuda.rank[0] == 0:
-            torch.save(self.model.state_dict(), model_path)
-
     def get_data(self):
         for data in iter(self._data_loader):
             device = self.config.cuda.device
@@ -31,12 +20,12 @@ class Network:
 
                 yield inputs_pc, targets, pc_id
             elif (self.config.network.mode_flag == 'lm') or (self.config.network.mode_flag == 'vae'):
-                # inputs_img, inputs_pc, targets = data[0].to(device).float().permute(0, 3, 1, 2).contiguous(), \
-                #                                  data[1].to(device).float().permute(0, 2, 1).contiguous(), \
-                #                                  data[2].to(device).float()
-                inputs_img, inputs_pc, targets = data[0].to(device).float().contiguous(), \
+                inputs_img, inputs_pc, targets = data[0].to(device).float().permute(0, 3, 1, 2).contiguous(), \
                                                  data[1].to(device).float().permute(0, 2, 1).contiguous(), \
                                                  data[2].to(device).float()
+                # inputs_img, inputs_pc, targets = data[0].to(device).float().contiguous(), \
+                #                                  data[1].to(device).float().permute(0, 2, 1).contiguous(), \
+                #                                  data[2].to(device).float()
 
                 img_id, pc_id = data[3], data[4]
                 yield inputs_img, inputs_pc, targets, img_id, pc_id

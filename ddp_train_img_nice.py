@@ -9,7 +9,7 @@ import torchvision.models as models
 from PCAE.config import Config
 from PCAE.dataloader import PCDataset
 from PCAE.networks import Network
-from PCAE.models import LMNetAE, NICE, LMImgEncoder
+from PCAE.models import LMNetAE, NICE, ImgNICE, LMImgEncoder
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
 
@@ -62,6 +62,8 @@ parser.add_argument('--learning_rate', type=float, required=True, default=5e-5,
 '''
 parser.add_argument('--nice_batch_size', type=int, required=True, default=200,
                     help='Batch size for NICE')
+parser.add_argument('--nice_lr', type=float, required=True, default=5e-5,
+                    help='learning rate for NICE flow')
 parser.add_argument('--latent_distribution', type=str, required=True, default='normal',
                     help='Prior distribution for NICE')
 parser.add_argument('--mid_dim', type=int, required=True, default=128,
@@ -102,6 +104,7 @@ class ImgNICETrainSession(Network):
         self.avg_step_loss = .0
         self.avg_epoch_loss = .0
         self.pc_flow = None
+        self.img_flow = None
         self.prior_model = None
         self.model_util = ModelUtil(config=config)
         self.visualizer = None
@@ -112,6 +115,7 @@ class ImgNICETrainSession(Network):
         self.hidden = 5
         if config.nice.latent == 'normal':
             self.prior = torch.distributions.Normal(torch.tensor(0.).cuda(), torch.tensor(1.).cuda())
+        self.optimizer_f = None
 
     def train(self):
         self.set_model()
@@ -121,6 +125,7 @@ class ImgNICETrainSession(Network):
             self.visualizer = WandbVisualizer(config=config, job_type='train', model=self.model)
 
         self.model.train()
+        self.img_flow.train()
         self.prior_model.eval()
         self.pc_flow.eval()
         for epoch_idx in range(self._epoch - 1, config.network.epoch_num):
@@ -132,24 +137,27 @@ class ImgNICETrainSession(Network):
             final_step = 0
             for idx, (inputs_img, inputs_pc, targets, _, _) in enumerate(self.get_data()):
                 final_step = idx
-                self.optimizer.zero_grad()
-                latent_imgs = self.model(inputs_img)
-                img_log_prob_loss = -self.pc_flow(latent_imgs).mean()
-
                 with torch.no_grad():
                     latent_pcs, _ = self.prior_model(inputs_pc)
-                    pc_log_prob_loss = -self.pc_flow(latent_pcs).mean()
+                    prior_mu, _ = self.pc_flow.module.f(latent_pcs)
 
-                loss = torch.nn.MSELoss()(img_log_prob_loss, pc_log_prob_loss) * config.network.loss_scale_factor
+                self.optimizer.zero_grad()
+                self.optimizer_f.zero_grad()
+                latent_imgs = self.model(inputs_img)
+                loss = -self.img_flow(x=latent_imgs, prior_mu=prior_mu).mean()
 
                 loss.backward()
                 self.optimizer.step()
+                self.optimizer_f.step()
 
                 self.log_step_loss(loss=loss.item(), step_idx=idx + 1)
                 self.avg_step_loss = .0
 
             logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
-            self.save_model()
+            img_ck_path = config.network.checkpoint_path
+            self.model_util.save_model(model=self.model, ck_path=img_ck_path, epoch=self._epoch)
+            img_flow_ck_path = config.home_dir + '/data/LMNet-data/checkpoint/DDP/ImgFlow'
+            self.model_util.save_model(model=self.img_flow, ck_path=img_flow_ck_path, epoch=self._epoch)
             self.log_epoch_loss()
             self.avg_epoch_loss = .0
             self._epoch += 1
@@ -158,17 +166,25 @@ class ImgNICETrainSession(Network):
             self.model_util.cleanup()
 
     def set_model(self):
-        # self.model = LMImgEncoder(latent_size=config.network.latent_size)
-        self.model = torch.nn.Sequential(models.resnet50(pretrained=True),
-                                         torch.nn.Linear(1000, config.network.latent_size))
+        self.model = LMImgEncoder(latent_size=config.network.latent_size)
+        # self.model = torch.nn.Sequential(models.resnet50(pretrained=True),
+        #                                  torch.nn.Linear(1000, config.network.latent_size))
         self.model = self.model_util.set_model_device(self.model)
         self.model = self.model_util.set_model_parallel_gpu(self.model)
         self._epoch = self.model_util.load_model_pretrain(self.model, self._pretrained_epoch, self._is_scratch)
+        """Img Flow
+        """
+        self.img_flow = ImgNICE(coupling=config.nice.coupling, in_out_dim=self.full_dim,
+                                mid_dim=config.nice.mid_dim, hidden=self.hidden, mask_config=config.nice.mask_config)
+        self.img_flow = self.model_util.set_model_device(self.img_flow)
+        self.img_flow = self.model_util.set_model_parallel_gpu(self.img_flow)
+        self.optimizer_f = torch.optim.Adam(params=self.img_flow.parameters(), lr=config.nice.learning_rate,
+                                            betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
         """Prior Model
         """
         self.prior_model = LMNetAE(config.dataset.resample_amount)
         self.prior_model = self.model_util.load_trained_model(self.prior_model, config.network.prior_epoch)
-        """NICE
+        """PC Flow
         """
         self.pc_flow = NICE(prior=self.prior, coupling=config.nice.coupling, in_out_dim=self.full_dim,
                             mid_dim=config.nice.mid_dim, hidden=self.hidden, mask_config=config.nice.mask_config)
@@ -183,9 +199,9 @@ class ImgNICETrainSession(Network):
             logging.info('Epoch %d, %d Step, loss = %.6f' % (self._epoch, step_idx, self.avg_step_loss))
 
             if ((argument.local_rank is not None) and config.cuda.rank[0] == 0) and config.wandb.visual_flag:
-                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss, loss_name='log_prob_mse')
+                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss, loss_name='log_prob')
             elif (argument.local_rank is None) and config.wandb.visual_flag:
-                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss, loss_name='log_prob_mse')
+                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss, loss_name='log_prob')
 
     def log_epoch_loss(self):
         if config.cuda.dataparallel_mode == 'Dataparallel':
@@ -195,10 +211,10 @@ class ImgNICETrainSession(Network):
 
         logging.info('Logging Epoch Loss...')
         if ((argument.local_rank is not None) and config.cuda.rank[0] == 0) and config.wandb.visual_flag:
-            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='log_prob_mse',
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='log_prob',
                                            train_epoch_loss=self.avg_epoch_loss)
         elif (argument.local_rank is None) and config.wandb.visual_flag:
-            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='log_prob_mse',
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='log_prob',
                                            train_epoch_loss=self.avg_epoch_loss)
 
 

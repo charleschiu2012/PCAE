@@ -1,8 +1,9 @@
-import torch
 import re
-import torch.distributed
+import os
 import logging
 from glob import glob
+import torch
+import torch.distributed
 
 
 def cleanup():
@@ -99,6 +100,14 @@ class ModelUtil:
             model.load_state_dict(state_dict=torch.load(f=weight_path, map_location=map_location))
         model = self.freeze_model(model)
         return model
+
+    def save_model(self, model, ck_path, epoch):
+        os.makedirs(ck_path, exist_ok=True)
+        model_path = '%s/epoch%.3d.pth' % (ck_path, int(epoch))
+        if self.config.cuda.dataparallel_mode == 'Dataparallel':
+            torch.save(model.state_dict(), model_path)
+        if self.config.cuda.dataparallel_mode == 'DistributedDataParallel' and self.config.cuda.rank[0] == 0:
+            torch.save(model.state_dict(), model_path)
 
     @staticmethod
     def get_epoch_num(model_path: str):

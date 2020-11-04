@@ -6,7 +6,6 @@ from torch.utils.data import DataLoader
 
 from PCAE.config import Config
 from PCAE.dataloader import PCDataset
-# from PCAE.jobs.networks.loss import chamfer_distance_loss, emd_loss
 from PCAE.networks import Network
 from PCAE.models import LMNetAE, LMImgEncoder
 from PCAE.visualizer import WandbVisualizer
@@ -43,7 +42,7 @@ parser.add_argument('--prior_model', type=str, required=True,
                     help='Which point cloud autoencoder')
 parser.add_argument('--checkpoint_path', type=str, required=True,
                     help='Where to store/load weights')
-parser.add_argument('--prior_epoch', type=str, required=True, default='LMNetAE/epoch300.pth',
+parser.add_argument('--prior_epoch', type=str, required=True,
                     help='Which epoch of autoencoder to use to ImgEncoder')
 parser.add_argument('--loss_scale_factor', type=int, required=True, default=10000,
                     help='Scale your loss')
@@ -57,6 +56,7 @@ parser.add_argument('--epoch_num', type=int, required=True, default=300,
                     help='How many epoch to train')
 parser.add_argument('--learning_rate', type=float, required=True, default=5e-5,
                     help='Learning rate')
+parser.add_argument('--nice_epoch', type=str, default=None)
 '''wandb
 '''
 parser.add_argument('--project_name', type=str, required=True,
@@ -120,7 +120,8 @@ class LMTrainSession(Network):
                 self.avg_step_loss = 0
 
             logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
-            # self.save_model()
+            img_ck_path = config.network.checkpoint_path
+            self.model_util.save_model(model=self.model, ck_path=img_ck_path, epoch=self._epoch)
             self.log_epoch_loss()
             self.avg_epoch_loss = .0
             self._epoch += 1
@@ -139,10 +140,10 @@ class LMTrainSession(Network):
         '''
         self.prior_model = LMNetAE(config.dataset.resample_amount)
         self.prior_model = self.model_util.load_trained_model(self.prior_model, config.network.prior_epoch)
-        '''PC Decoder
-        '''
-        self.pc_decoder = self.prior_model.module.decoder
-        self.pc_decoder = self.model_util.freeze_model(self.model_util.set_model_parallel_gpu(self.pc_decoder))
+        # '''PC Decoder
+        # '''
+        # self.pc_decoder = self.prior_model.module.decoder
+        # self.pc_decoder = self.model_util.freeze_model(self.model_util.set_model_parallel_gpu(self.pc_decoder))
 
     def log_step_loss(self, loss, step_idx):
         self.avg_step_loss += loss
