@@ -7,7 +7,7 @@ import torch.distributions as distributions
 from PCAE.config import Config
 from PCAE.dataloader import PCDataset
 from PCAE.networks import Network
-from PCAE.models import LMNetAE, NICE, LMImgEncoder
+from PCAE.models import LMNetAE, NICE, ImgNICE, LMImgEncoder
 from PCAE.loss import chamfer_distance_loss
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
@@ -61,6 +61,8 @@ parser.add_argument('--learning_rate', type=float, required=True, default=5e-5,
 '''
 parser.add_argument('--nice_batch_size', type=int, required=True, default=200,
                     help='Batch size for NICE')
+parser.add_argument('--nice_lr', type=float, required=True, default=5e-5,
+                    help='learning rate for NICE flow')
 parser.add_argument('--latent_distribution', type=str, required=True, default='normal',
                     help='Prior distribution for NICE')
 parser.add_argument('--mid_dim', type=int, required=True, default=128,
@@ -73,7 +75,7 @@ parser.add_argument('--coupling', type=int, required=True, default=4,
                     help='Number of coupling layers')
 parser.add_argument('--mask_config', type=float, required=True, default=1.,
                     help='mask_config')  # TODO
-parser.add_argument('--nice_epoch', type=int,
+parser.add_argument('--nice_epoch', type=str,
                     help='Which epoch of NICE to use to ImgEncoder')
 '''wandb
 '''
@@ -96,9 +98,11 @@ class ImgNICEValidSession(Network):
     def __init__(self, dataloader, model=None):
         super().__init__(config=config, data_loader=dataloader, data_type='valid', epoch=1, model=model)
 
-        self.avg_step_loss = .0
-        self.avg_epoch_loss = .0
-        self.flow = None
+        self.avg_epoch_dr_cd_loss = .0
+        self.avg_epoch_ndr_cd_loss = .0
+        self.pc_flow = None
+        # self.img_flow = None
+        self.prior_model = None
         self.pc_decoder = None
         self.model_util = ModelUtil(config=config)
         self.models_path = self.model_util.get_models_path(config.network.checkpoint_path)
@@ -110,12 +114,7 @@ class ImgNICEValidSession(Network):
             self.prior = torch.distributions.Normal(torch.tensor(0.).cuda(), torch.tensor(1.).cuda())
 
         self.visualizer = WandbVisualizer(config=config, job_type='valid',
-                                          model=NICE(prior=self.prior,
-                                                     coupling=config.nice.coupling,
-                                                     in_out_dim=self.full_dim,
-                                                     mid_dim=config.nice.mid_dim,
-                                                     hidden=self.hidden,
-                                                     mask_config=config.nice.mask_config))
+                                          model=LMImgEncoder(latent_size=config.network.latent_size))
 
     def validate(self):
         self.set_model()
@@ -123,65 +122,63 @@ class ImgNICEValidSession(Network):
             self._epoch = self.model_util.get_epoch_num(model_path) - 1
             self.model_util.test_trained_model(model=self.model, test_epoch=i + 1)
 
-        self.model.eval()
-        self.pc_decoder.eval()
-        self.flow.eval()
+            self.model.eval()
+            self.pc_decoder.eval()
+            self.pc_flow.eval()
 
-        final_step = 0
-        with torch.no_grad():
-            for idx, (inputs_img, inputs_pc, targets, _, _) in enumerate(self.get_data()):
-                final_step = idx
+            final_step = 0
+            with torch.no_grad():
+                for idx, (inputs_img, inputs_pc, targets, _, _) in enumerate(self.get_data()):
+                    final_step = idx
 
-                latent_imgs = self.model(inputs_img)
-                z, _ = self.flow.module.f(latent_imgs)
-                re_latents = self.flow.module.g(z)
-                prediction_imgs = self.pc_decoder(re_latents)
+                    latent_imgs = self.model(inputs_img)
+                    dr_prediction_imgs = self.pc_decoder(latent_imgs)
+                    z, _ = self.pc_flow.module.f(latent_imgs)
+                    re_latents = self.pc_flow.module.g(z)
+                    ndr_prediction_imgs = self.pc_decoder(re_latents)
 
-                loss = chamfer_distance_loss(prediction_imgs, targets) * config.network.loss_scale_factor
+                    dr_cd_loss = chamfer_distance_loss(dr_prediction_imgs, targets)
+                    ndr_cd_loss = chamfer_distance_loss(ndr_prediction_imgs, targets)
 
-                self.log_step_loss(loss=loss.item() / config.network.loss_scale_factor, step_idx=idx + 1)
-                self.avg_step_loss = .0
+                    self.avg_epoch_dr_cd_loss += dr_cd_loss.item()
+                    self.avg_epoch_ndr_cd_loss += ndr_cd_loss.item()
 
-        logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
-        self.log_epoch_loss()
-        self.avg_epoch_loss = .0
+            logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
+            self.log_epoch_loss()
+            self.avg_epoch_dr_cd_loss = .0
+            self.avg_epoch_ndr_cd_loss = .0
 
     def set_model(self):
         self.model = LMImgEncoder(config.network.latent_size)
         self.model = self.model_util.set_model_device(self.model)
         self.model = self.model_util.set_model_parallel_gpu(self.model)
-        '''PC Decoder
+        # """Img Flow
+        # """
+        # self.img_flow = ImgNICE(coupling=config.nice.coupling, in_out_dim=self.full_dim,
+        #                         mid_dim=config.nice.mid_dim, hidden=self.hidden, mask_config=config.nice.mask_config)
+        # self.img_flow = self.model_util.set_model_device(self.img_flow)
+        # self.img_flow = self.model_util.set_model_parallel_gpu(self.img_flow)
+        '''Prior Model & PC Decoder
         '''
-        prior_model = LMNetAE(config.dataset.resample_amount)
-        prior_model = self.model_util.load_trained_model(prior_model, config.network.prior_epoch)
-        self.pc_decoder = prior_model.module.decoder
+        self.prior_model = LMNetAE(config.dataset.resample_amount)
+        self.prior_model = self.model_util.load_trained_model(self.prior_model, config.network.prior_epoch)
+        self.pc_decoder = self.prior_model.module.decoder
         self.pc_decoder = self.model_util.freeze_model(self.model_util.set_model_parallel_gpu(self.pc_decoder))
         '''NICE
         '''
-        self.flow = NICE(prior=self.prior,
-                         coupling=config.nice.coupling,
-                         in_out_dim=self.full_dim,
-                         mid_dim=config.nice.mid_dim,
-                         hidden=self.hidden,
-                         mask_config=config.nice.mask_config)
-        self.flow = self.model_util.load_trained_model(self.flow, config.network.prior_epoch)
-
-    def log_step_loss(self, loss, step_idx):
-        self.avg_step_loss += loss
-        self.avg_epoch_loss += loss
-
-        if step_idx % config.wandb.step_loss_freq == 0:
-            self.avg_step_loss /= config.wandb.step_loss_freq
-            logging.info('Epoch %d, %d Step, loss = %.6f' % (self._epoch, step_idx, self.avg_step_loss))
-
-            self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss, loss_name='cd')
+        self.pc_flow = NICE(prior=self.prior, coupling=config.nice.coupling, in_out_dim=self.full_dim,
+                            mid_dim=config.nice.mid_dim, hidden=self.hidden, mask_config=config.nice.mask_config)
+        self.pc_flow = self.model_util.load_trained_model(self.pc_flow, config.nice.nice_epoch)
 
     def log_epoch_loss(self):
-        self.avg_epoch_loss /= config.dataset.dataset_size[self._data_type]
+        self.avg_epoch_dr_cd_loss /= config.dataset.dataset_size[self._data_type]
+        self.avg_epoch_ndr_cd_loss /= config.dataset.dataset_size[self._data_type]
 
         logging.info('Logging Epoch Loss...')
-        self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='cd',
-                                       valid_epoch_loss=self.avg_epoch_loss)
+        self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='dr_cd',
+                                       valid_epoch_loss=self.avg_epoch_dr_cd_loss)
+        self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='ndr_cd',
+                                       valid_epoch_loss=self.avg_epoch_ndr_cd_loss)
 
 
 def validImgNICE():

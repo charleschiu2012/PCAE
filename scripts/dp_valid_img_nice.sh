@@ -2,7 +2,7 @@
 
 dataset_size="840528/210288/210288"
 
-python ddp_train_img_nice.py \
+python dp_valid_img_nice.py \
 --gpu_usage 8 \
 --dataparallel_mode "Dataparallel" \
 --dataset_name "LMNet_ShapeNet_PC" \
@@ -17,17 +17,18 @@ python ddp_train_img_nice.py \
 --batch_size 32 \
 --latent_size 512 \
 --epoch_num 300 \
---learning_rate 5e-5 \
+--learning_rate 5e-4 \
 --nice_batch_size 32 \
+--nice_lr 1e-3 \
 --latent_distribution "normal" \
 --mid_dim 128 \
 --num_iters 25000 \
 --num_sample 64 \
 --coupling 4 \
 --mask_config 1. \
---nice_epoch 300 \
+--nice_epoch "NICE/epoch300.pth" \
 --project_name "Analogy" \
 --run_name "ImgNICE" \
 --machine_id "TWCC" \
 --step_loss_freq 500 \
-#--visual_flag
+--visual_flag
