@@ -86,8 +86,6 @@ class ModelUtil:
         logging.info('Use %s to test' % model_path)
 
     def load_trained_model(self, model, weight_path):
-        model = self.set_model_device(model)
-        model = self.set_model_parallel_gpu(model)
         weight_path = '../data/LMNet-data/checkpoint/DDP/{}'.format(weight_path)
         if self.config.cuda.dataparallel_mode == 'Dataparallel':
             model.load_state_dict(state_dict=torch.load(f=weight_path))
