@@ -141,8 +141,8 @@ class ImgNICEValidSession(Network):
                     cd_loss = chamfer_distance_loss(prediction_imgs, targets)
                     _emd_loss = emd_loss(prediction_imgs, targets)
 
-                    self.avg_epoch_cd_loss += cd_loss.item()
-                    self.avg_epoch_emd_loss += _emd_loss.item()
+                    self.avg_epoch_cd_loss += (cd_loss.item() * len(inputs_pc))
+                    self.avg_epoch_emd_loss += (_emd_loss.item() * len(inputs_pc))
 
             logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
             self.log_epoch_loss()

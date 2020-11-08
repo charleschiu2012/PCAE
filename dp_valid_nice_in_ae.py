@@ -131,9 +131,9 @@ class NICEAEValidSession(Network):
                     cd_loss = chamfer_distance_loss(predictions, targets) * config.network.loss_scale_factor
                     log_prob_loss = log_prob_loss.mean()
                     loss = log_prob_loss + cd_loss
-                    self.avg_epoch_loss += loss.item()
-                    self.avg_epoch_cd_loss += cd_loss.item()
-                    self.avg_epoch_log_prob_loss += log_prob_loss.item()
+                    self.avg_epoch_loss += (loss.item() * len(inputs_pc))
+                    self.avg_epoch_cd_loss += (cd_loss.item() * len(inputs_pc))
+                    self.avg_epoch_log_prob_loss += (log_prob_loss.item() * len(inputs_pc))
 
                 logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
                 self.log_epoch_loss()

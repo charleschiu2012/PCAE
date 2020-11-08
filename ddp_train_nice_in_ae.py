@@ -142,16 +142,17 @@ class NICEAETrainSession(Network):
                 loss.backward()
                 self.optimizer.step()
 
-                self.log_step_loss(sum_loss=loss.item(),
-                                   cd_loss=cd_loss.item(),
-                                   log_prob_loss=log_prob_loss.item(),
+                self.log_step_loss(sum_loss=loss.item() * len(inputs_pc),
+                                   cd_loss=cd_loss.item() * len(inputs_pc),
+                                   log_prob_loss=log_prob_loss.item() * len(inputs_pc),
                                    step_idx=idx + 1)
                 self.avg_step_loss = .0
                 self.avg_step_cd_loss = .0
                 self.avg_step_log_prob_loss = .0
 
             logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
-            self.save_model()
+            ae_nice_ck_path = config.network.checkpoint_path
+            self.model_util.save_model(model=self.model, ck_path=ae_nice_ck_path, epoch=self._epoch)
             self.log_epoch_loss()
             self.avg_epoch_loss = .0
             self.avg_epoch_cd_loss = .0

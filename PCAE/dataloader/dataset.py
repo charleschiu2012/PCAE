@@ -1,12 +1,11 @@
-import open3d as o3d
 import os
 import json
 import numpy as np
 import copy
 import itertools
 import cv2
-from PIL import Image
 import random
+from PIL import Image
 from torchvision import transforms
 from torch.utils.data import Dataset
 
@@ -25,7 +24,9 @@ class PCDataset(Dataset):
 
         if (self.config.network.mode_flag == 'ae') or (self.config.network.mode_flag == 'nice'):
             return len(self.dataset_loader.pc_paths)
-        elif (self.config.network.mode_flag == 'lm') or (self.config.network.mode_flag == 'vae'):
+        elif (self.config.network.mode_flag == 'lm') \
+                or (self.config.network.mode_flag == 'vae') \
+                or (self.config.network.mode_flag == 'all_view'):
             return len(self.dataset_loader.split_render_dataset_path)
 
     def __getitem__(self, item):
@@ -40,12 +41,20 @@ class PCDataset(Dataset):
             target = copy.deepcopy(pc)
 
             return img, pc, target, img_id, pc_id
+        elif self.config.network.mode_flag == 'all_view':
+            imgs, img_ids = self.get_all_view_img(item)
+            pc, pc_id = self.get_pc(item)
+            target = copy.deepcopy(pc)
+
+            return imgs, pc, target, img_ids, pc_id
 
     def get_pc(self, item):
         pc_path = None
         if (self.config.network.mode_flag == 'ae') or (self.config.network.mode_flag == 'nice'):
             pc_path = self.dataset_loader.pc_paths[item]
-        elif (self.config.network.mode_flag == 'lm') or (self.config.network.mode_flag == 'vae'):
+        elif (self.config.network.mode_flag == 'lm') \
+                or (self.config.network.mode_flag == 'vae') \
+                or (self.config.network.mode_flag == 'all_view'):
             pc_path = self.dataset_loader.split_render_dataset_path[item][0]
         # pc = o3d.io.read_point_cloud(pc_path)
         # assert isinstance(pc, o3d.geometry.PointCloud)
@@ -81,6 +90,21 @@ class PCDataset(Dataset):
 
         return img, img_id
 
+    def get_all_view_img(self, item):
+        img_paths = self.dataset_loader.split_render_dataset_path[item][1]  # 24 paths
+        imgs = []
+        img_ids = []
+        for idx in range(24):
+            img = cv2.imread(img_paths[idx], cv2.IMREAD_COLOR)[4:-5, 4:-5, :3]
+            # img = Image.open(img_path).convert('RGB')
+            imgs.append(img)
+
+            img_id = '/'.join(img_paths[idx].split('/')[6:10]).split('.')[0]
+            img_ids.append(img_id)
+        imgs = np.array(imgs)
+
+        return imgs, img_ids
+
 
 class DatasetLoader:
     def __init__(self, config, split_dataset_type: str):
@@ -92,13 +116,17 @@ class DatasetLoader:
         self.split_dataset_path = None
         self.pc_ids = []
         self.pc_paths = []
-        if (self.config.network.mode_flag == 'lm') or (self.config.network.mode_flag == 'vae'):
+        if (self.config.network.mode_flag == 'lm') \
+                or (self.config.network.mode_flag == 'vae')\
+                or (self.config.network.mode_flag == 'all_view'):
             self.split_render_dataset_path = []
 
         self.set_split_dataset_path()
         self.load_pc_ids()
         if (self.config.network.mode_flag == 'lm') or (self.config.network.mode_flag == 'vae'):
             self.pair_pc_img()
+        elif self.config.network.mode_flag == 'all_view':
+            self.pair_pc_all_view_img()
 
     def set_split_dataset_path(self):
         if self.split_dataset_type == 'test':
@@ -147,6 +175,25 @@ class DatasetLoader:
             img_path = os.path.join(self.config.dataset.dataset_path + 'ShapeNetRendering/',
                                     id_with_view[0], 'rendering', id_with_view[1])
             self.split_render_dataset_path.append([pc_path, img_path])
+
+        if self.config.dataset.get_dataset_num(self.split_dataset_type) < len(self.split_render_dataset_path):
+            random.shuffle(self.split_render_dataset_path)
+            self.split_render_dataset_path = \
+                self.split_render_dataset_path[:self.config.dataset.get_dataset_num(self.split_dataset_type)]
+
+    def pair_pc_all_view_img(self):
+        num_views = 24
+        png_files = [(str(i).zfill(2) + '.png') for i in range(num_views)]
+        for pc_id in self.pc_ids:
+            pc_path = os.path.join(self.config.dataset.dataset_path + 'ShapeNet_pointclouds/',
+                                   pc_id,
+                                   'pointcloud_{}.npy'.format(self.config.dataset.resample_amount))
+            imgs_in_one_id = []
+            for view in png_files:
+                img_path = os.path.join(self.config.dataset.dataset_path + 'ShapeNetRendering/',
+                                        pc_id, 'rendering', view)
+                imgs_in_one_id.append(img_path)
+            self.split_render_dataset_path.append([pc_path, imgs_in_one_id])
 
         if self.config.dataset.get_dataset_num(self.split_dataset_type) < len(self.split_render_dataset_path):
             random.shuffle(self.split_render_dataset_path)

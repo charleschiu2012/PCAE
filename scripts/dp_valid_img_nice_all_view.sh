@@ -1,14 +1,14 @@
 #!/bin/bash
 
-dataset_size="840528/210288/210288"
+dataset_size="35022/8762/8762"
 
-python dp_valid_img_nice.py \
+python dp_valid_img_nice_all_view.py \
 --gpu_usage 8 \
 --dataparallel_mode "Dataparallel" \
 --dataset_name "LMNet_ShapeNet_PC" \
 --dataset_size "$dataset_size" \
 --resample_amount 2048 \
---mode_flag "lm" \
+--mode_flag "all_view" \
 --prior_model "LMNetAE" \
 --img_encoder "LMImgEncoder" \
 --checkpoint_path "/data/LMNet-data/checkpoint/DDP/ImgNICE" \
@@ -28,7 +28,7 @@ python dp_valid_img_nice.py \
 --mask_config 1. \
 --nice_epoch "PCFlow/epoch300.pth" \
 --project_name "Analogy" \
---run_name "ImgNICE" \
+--run_name "ImgNICE_all_view" \
 --machine_id "TWCC" \
 --step_loss_freq 500 \
 --visual_flag

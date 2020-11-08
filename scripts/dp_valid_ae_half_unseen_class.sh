@@ -14,7 +14,7 @@ python dp_valid_ae.py \
 --prior_model "LMNetAE" \
 --checkpoint_path "/data/LMNet-data/checkpoint/DDP/LMNetAE_half_class" \
 --loss_scale_factor 10000 \
---batch_size 32 \
+--batch_size 512 \
 --latent_size 512 \
 --epoch_num 300 \
 --learning_rate 5e-4 \

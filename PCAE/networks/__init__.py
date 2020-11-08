@@ -1,5 +1,6 @@
 # PCAE/networks/__init__
 import torch
+import numpy as np
 
 
 class Network:
@@ -29,6 +30,15 @@ class Network:
 
                 img_id, pc_id = data[3], data[4]
                 yield inputs_img, inputs_pc, targets, img_id, pc_id
+            elif self.config.network.mode_flag == 'all_view':
+                assert len(data[0].shape) == 5
+                all_view_imgs = torch.cat([*data[0]])
+                inputs_imgs = all_view_imgs.to(device).float().permute(0, 3, 1, 2).contiguous()
+                inputs_pc = data[1].to(device).float().permute(0, 2, 1).contiguous()
+                targets = data[2].to(device).float()
+                img_ids, pc_id = data[3], data[4]
+
+                yield inputs_imgs, inputs_pc, targets, img_ids, pc_id
 
     def steps_in_an_epoch(self):
         if self.config.dataset.dataset_size[self._data_type] <= self.config.network.batch_size:

@@ -128,7 +128,7 @@ class NICEValidSession(Network):
                     z, _ = self.model.module.f(ae_latents)
                     re_latents = self.model.module.g(z)
                     mse_loss = torch.nn.MSELoss()(re_latents, ae_latents)
-                    self.avg_epoch_loss += mse_loss.item()
+                    self.avg_epoch_loss += (mse_loss.item() * len(inputs_pc))
 
             logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
             self.log_epoch_loss()

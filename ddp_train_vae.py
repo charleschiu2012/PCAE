@@ -126,9 +126,9 @@ class VAETrainSession(Network):
                 loss.backward()
                 self.optimizer.step()
 
-                self.log_step_loss(sum_loss=loss.item(),
-                                   cd_loss=cd_loss.item(),
-                                   kld_loss=kld_loss.item(),
+                self.log_step_loss(sum_loss=loss.item() * len(inputs_pc),
+                                   cd_loss=cd_loss.item() * len(inputs_pc),
+                                   kld_loss=kld_loss.item() * len(inputs_pc),
                                    step_idx=idx + 1)
                 self.avg_step_loss = .0
                 self.avg_step_cd_loss = .0

@@ -114,11 +114,13 @@ class AETrainSession(Network):
                 loss.backward()
                 self.optimizer.step()
 
-                self.log_step_loss(loss=loss.item() / config.network.loss_scale_factor, step_idx=idx + 1)
+                loss = (loss.item() / config.network.loss_scale_factor) * len(inputs_pc)
+                self.log_step_loss(loss=loss, step_idx=idx + 1)
                 self.avg_step_loss = 0
 
             logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
-            self.save_model()
+            ae_ck_path = config.network.checkpoint_path
+            self.model_util.save_model(model=self.model, ck_path=ae_ck_path, epoch=self._epoch)
             self.log_epoch_loss()
             self.avg_epoch_loss = .0
             self._epoch += 1

@@ -108,9 +108,9 @@ class LMValidSession(Network):
                     re_imgs = self.pc_decoder(latent_img)
                     cd_loss = chamfer_distance_loss(re_imgs, targets)
                     _emd_loss = emd_loss(re_imgs, targets)
-                    self.avg_epoch_l1_loss += l1_loss.item()
-                    self.avg_epoch_cd_loss += cd_loss.item()
-                    self.avg_epoch_emd_loss += _emd_loss.item()
+                    self.avg_epoch_l1_loss += (l1_loss.item() * len(inputs_pc))
+                    self.avg_epoch_cd_loss += (cd_loss.item() * len(inputs_pc))
+                    self.avg_epoch_emd_loss += (_emd_loss.item() * len(inputs_pc))
 
             logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
             self.log_epoch_loss()
@@ -125,6 +125,8 @@ class LMValidSession(Network):
         '''Prior Model
         '''
         self.prior_model = LMNetAE(config.dataset.resample_amount)
+        self.prior_model = self.model_util.set_model_device(self.prior_model)
+        self.prior_model = self.model_util.set_model_parallel_gpu(self.prior_model)
         self.prior_model = self.model_util.load_trained_model(self.prior_model, config.network.prior_epoch)
         '''PC Decoder
         '''

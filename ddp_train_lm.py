@@ -115,7 +115,7 @@ class LMTrainSession(Network):
 
                 loss.backward()
                 self.optimizer.step()
-
+                loss = (loss.item() / config.network.loss_scale_factor) * len(inputs_pc)
                 self.log_step_loss(loss=loss.item() / config.network.loss_scale_factor, step_idx=idx + 1)
                 self.avg_step_loss = 0
 
@@ -139,6 +139,8 @@ class LMTrainSession(Network):
         '''Prior Model
         '''
         self.prior_model = LMNetAE(config.dataset.resample_amount)
+        self.prior_model = self.model_util.set_model_device(self.prior_model)
+        self.prior_model = self.model_util.set_model_parallel_gpu(self.prior_model)
         self.prior_model = self.model_util.load_trained_model(self.prior_model, config.network.prior_epoch)
         # '''PC Decoder
         # '''

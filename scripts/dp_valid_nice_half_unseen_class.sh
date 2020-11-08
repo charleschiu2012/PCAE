@@ -16,11 +16,11 @@ python dp_valid_nice.py \
 --checkpoint_path "/data/LMNet-data/checkpoint/DDP/NICE_half_class" \
 --prior_epoch "LMNetAE/epoch296.pth" \
 --loss_scale_factor 10000 \
---batch_size 32 \
+--batch_size 512 \
 --latent_size 512 \
 --epoch_num 300 \
 --learning_rate 1e-3 \
---nice_batch_size 200 \
+--nice_batch_size 512 \
 --latent_distribution "normal" \
 --mid_dim 128 \
 --num_iters 25000 \

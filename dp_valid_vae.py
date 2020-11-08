@@ -107,9 +107,9 @@ class VAEValidSession(Network):
                     kld_loss = KLDLoss(mu, log_var)
                     cd_loss = chamfer_distance_loss(re_imgs, targets)
                     _emd_loss = emd_loss(re_imgs, targets)
-                    self.avg_epoch_kld_loss += kld_loss.item()
-                    self.avg_epoch_cd_loss += cd_loss.item()
-                    self.avg_epoch_emd_loss += _emd_loss.item()
+                    self.avg_epoch_kld_loss += (kld_loss.item() * len(inputs_pc))
+                    self.avg_epoch_cd_loss += (cd_loss.item() * len(inputs_pc))
+                    self.avg_epoch_emd_loss += (_emd_loss.item() * len(inputs_pc))
 
                 logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
                 self.log_epoch_loss()
