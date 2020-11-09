@@ -7,7 +7,7 @@ import torch.distributions as distributions
 from PCAE.config import Config
 from PCAE.dataloader import PCDataset
 from PCAE.networks import Network
-from PCAE.models import NiceAE
+from PCAE.models import NICE, LMNetAE
 from PCAE.loss import chamfer_distance_loss
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
@@ -57,10 +57,13 @@ parser.add_argument('--epoch_num', type=int, required=True, default=300,
                     help='How many epoch to train')
 parser.add_argument('--learning_rate', type=float, required=True, default=5e-5,
                     help='Learning rate')
+parser.add_argument('--nice_epoch', type=str, default=None)
 '''nice
 '''
 parser.add_argument('--nice_batch_size', type=int, required=True, default=200,
                     help='Batch size for NICE')
+parser.add_argument('--nice_lr', type=float, required=True,
+                    help='learning rate for NICE flow')
 parser.add_argument('--latent_distribution', type=str, required=True, default='normal',
                     help='Prior distribution for NICE')
 parser.add_argument('--mid_dim', type=int, required=True, default=128,
@@ -99,6 +102,7 @@ class NICEAEValidSession(Network):
         self.avg_epoch_log_prob_loss = 0.0
         self.prior_model = None
         self.pc_decoder = None
+        self.pc_flow = None
         self.model_util = ModelUtil(config=config)
         self.models_path = self.model_util.get_models_path(config.network.checkpoint_path)
 
@@ -107,29 +111,27 @@ class NICEAEValidSession(Network):
         if config.nice.latent == 'normal':
             self.prior = torch.distributions.Normal(torch.tensor(0.).cuda(), torch.tensor(1.).cuda())
         self.visualizer = WandbVisualizer(config=config, job_type='valid',
-                                          model=NiceAE(prior=self.prior,
-                                                       coupling=config.nice.coupling,
-                                                       in_out_dim=self.full_dim,
-                                                       mid_dim=config.nice.mid_dim,
-                                                       hidden=self.hidden,
-                                                       mask_config=config.nice.mask_config,
-                                                       num_points=config.dataset.resample_amount))
+                                          model=LMNetAE(config.dataset.resample_amount))
+        self.optimizer_f = None
 
     def validate(self):
         self.set_model()
         for i, model_path in enumerate(self.models_path):
             self._epoch = self.model_util.get_epoch_num(model_path) - 1
-            self.model_util.test_trained_model(model=self.model, test_epoch=i + 1)
+            self.model = self.model_util.load_trained_model(self.model, "NICE_in_AE/AE/epoch%.3d.pth" % (i + 1))
+            self.pc_flow = self.model_util.load_trained_model(self.pc_flow, "NICE_in_AE/PC_Flow/epoch%.3d.pth" % (i + 1))
 
             self.model.eval()
+            self.pc_flow.eval()
             with torch.no_grad():
                 final_step = 0
                 for idx, (inputs_pc, targets, pc_ids) in enumerate(self.get_data()):
                     final_step = idx
-                    log_prob_loss, predictions = self.model(inputs_pc)
+                    latent_pcs, predictions = self.model(inputs_pc)
 
-                    cd_loss = chamfer_distance_loss(predictions, targets) * config.network.loss_scale_factor
-                    log_prob_loss = log_prob_loss.mean()
+                    log_prob_loss = -self.pc_flow(x=latent_pcs).mean()
+                    cd_loss = chamfer_distance_loss(predictions, targets)
+
                     loss = log_prob_loss + cd_loss
                     self.avg_epoch_loss += (loss.item() * len(inputs_pc))
                     self.avg_epoch_cd_loss += (cd_loss.item() * len(inputs_pc))
@@ -142,15 +144,19 @@ class NICEAEValidSession(Network):
                 self.avg_epoch_log_prob_loss = .0
 
     def set_model(self):
-        self.model = NiceAE(prior=self.prior,
-                            coupling=config.nice.coupling,
-                            in_out_dim=self.full_dim,
-                            mid_dim=config.nice.mid_dim,
-                            hidden=self.hidden,
-                            mask_config=config.nice.mask_config,
-                            num_points=config.dataset.resample_amount)
+        """Prior Model
+                """
+        self.model = LMNetAE(config.dataset.resample_amount)
         self.model = self.model_util.set_model_device(self.model)
         self.model = self.model_util.set_model_parallel_gpu(self.model)
+        """PC flow
+        """
+        self.pc_flow = NICE(prior=self.prior, coupling=config.nice.coupling, in_out_dim=self.full_dim,
+                            mid_dim=config.nice.mid_dim, hidden=self.hidden, mask_config=config.nice.mask_config)
+        self.pc_flow = self.model_util.set_model_device(self.pc_flow)
+        self.pc_flow = self.model_util.set_model_parallel_gpu(self.pc_flow)
+        self.optimizer_f = torch.optim.Adam(params=self.pc_flow.parameters(), lr=config.nice.learning_rate,
+                                            betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
 
     def log_epoch_loss(self):
         self.avg_epoch_loss /= config.dataset.dataset_size[self._data_type]

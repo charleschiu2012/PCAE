@@ -17,6 +17,7 @@ OMP_NUM_THREADS=1 python -m torch.distributed.launch --nproc_per_node=8 ddp_trai
 --epoch_num 300 \
 --learning_rate 1e-3 \
 --nice_batch_size 200 \
+--nice_lr 1e-3 \
 --latent_distribution "normal" \
 --mid_dim 128 \
 --num_iters 25000 \

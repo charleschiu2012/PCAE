@@ -8,7 +8,7 @@ import torch.distributions as distributions
 from PCAE.config import Config
 from PCAE.dataloader import PCDataset
 from PCAE.networks import Network
-from PCAE.models import NiceAE
+from PCAE.models import NICE, LMNetAE
 from PCAE.loss import chamfer_distance_loss
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
@@ -58,10 +58,13 @@ parser.add_argument('--epoch_num', type=int, required=True, default=300,
                     help='How many epoch to train')
 parser.add_argument('--learning_rate', type=float, required=True, default=5e-5,
                     help='Learning rate')
+parser.add_argument('--nice_epoch', type=str, default=None)
 '''nice
 '''
 parser.add_argument('--nice_batch_size', type=int, required=True, default=200,
                     help='Batch size for NICE')
+parser.add_argument('--nice_lr', type=float, required=True,
+                    help='learning rate for NICE flow')
 parser.add_argument('--latent_distribution', type=str, required=True, default='normal',
                     help='Prior distribution for NICE')
 parser.add_argument('--mid_dim', type=int, required=True, default=128,
@@ -105,6 +108,7 @@ class NICEAETrainSession(Network):
         self.avg_epoch_log_prob_loss = 0.0
         self.prior_model = None
         self.decoder = None
+        self.pc_flow = None
         self.model_util = ModelUtil(config=config)
         self.visualizer = None
         if config.cuda.dataparallel_mode == 'DistributedDataParallel':
@@ -114,6 +118,7 @@ class NICEAETrainSession(Network):
         self.hidden = 5
         if config.nice.latent == 'normal':
             self.prior = torch.distributions.Normal(torch.tensor(0.).cuda(), torch.tensor(1.).cuda())
+        self.optimizer_f = None
 
     def train(self):
         self.set_model()
@@ -133,26 +138,30 @@ class NICEAETrainSession(Network):
             for idx, (inputs_pc, targets, pc_ids) in enumerate(self.get_data()):
                 final_step = idx
                 self.optimizer.zero_grad()
-                log_prob_loss, predictions = self.model(inputs_pc)
+                self.optimizer_f.zero_grad()
+                latent_pcs, predictions = self.model(inputs_pc)
 
+                log_prob_loss = -self.pc_flow(x=latent_pcs).mean()
                 cd_loss = chamfer_distance_loss(predictions, targets) * config.network.loss_scale_factor
-                log_prob_loss = log_prob_loss.mean()
-                loss = log_prob_loss + cd_loss
+                loss = cd_loss + log_prob_loss
 
                 loss.backward()
                 self.optimizer.step()
-
-                self.log_step_loss(sum_loss=loss.item() * len(inputs_pc),
-                                   cd_loss=cd_loss.item() * len(inputs_pc),
-                                   log_prob_loss=log_prob_loss.item() * len(inputs_pc),
+                self.optimizer_f.step()
+                true_cd_loss = cd_loss / config.network.loss_scale_factor
+                self.log_step_loss(sum_loss=((true_cd_loss+log_prob_loss).item() * len(inputs_pc)),
+                                   cd_loss=(true_cd_loss.item() * len(inputs_pc)),
+                                   log_prob_loss=(log_prob_loss.item() * len(inputs_pc)),
                                    step_idx=idx + 1)
                 self.avg_step_loss = .0
                 self.avg_step_cd_loss = .0
                 self.avg_step_log_prob_loss = .0
 
             logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
-            ae_nice_ck_path = config.network.checkpoint_path
+            ae_nice_ck_path = config.network.checkpoint_path + '/AE'
             self.model_util.save_model(model=self.model, ck_path=ae_nice_ck_path, epoch=self._epoch)
+            pc_flow_ck_path = config.network.checkpoint_path + '/PC_Flow'
+            self.model_util.save_model(model=self.pc_flow, ck_path=pc_flow_ck_path, epoch=self._epoch)
             self.log_epoch_loss()
             self.avg_epoch_loss = .0
             self.avg_epoch_cd_loss = .0
@@ -163,16 +172,20 @@ class NICEAETrainSession(Network):
             self.model_util.cleanup()
 
     def set_model(self):
-        self.model = NiceAE(prior=self.prior,
-                            coupling=config.nice.coupling,
-                            in_out_dim=self.full_dim,
-                            mid_dim=config.nice.mid_dim,
-                            hidden=self.hidden,
-                            mask_config=config.nice.mask_config,
-                            num_points=config.dataset.resample_amount)
+        """Prior Model
+        """
+        self.model = LMNetAE(config.dataset.resample_amount)
         self.model = self.model_util.set_model_device(self.model)
         self.model = self.model_util.set_model_parallel_gpu(self.model)
         self._epoch = self.model_util.load_model_pretrain(self.model, self._pretrained_epoch, self._is_scratch)
+        """PC flow
+        """
+        self.pc_flow = NICE(prior=self.prior, coupling=config.nice.coupling, in_out_dim=self.full_dim,
+                            mid_dim=config.nice.mid_dim, hidden=self.hidden, mask_config=config.nice.mask_config)
+        self.pc_flow = self.model_util.set_model_device(self.pc_flow)
+        self.pc_flow = self.model_util.set_model_parallel_gpu(self.pc_flow)
+        self.optimizer_f = torch.optim.Adam(params=self.pc_flow.parameters(), lr=config.nice.learning_rate,
+                                            betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
 
     def log_step_loss(self, sum_loss, cd_loss, log_prob_loss, step_idx):
         self.avg_step_loss += sum_loss
