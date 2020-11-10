@@ -96,7 +96,7 @@ config = Config(argument)
 
 class ImgNICEValidSession(Network):
     def __init__(self, dataloader, model=None):
-        super().__init__(config=config, data_loader=dataloader, data_type='valid', epoch=1, model=model)
+        super().__init__(config=config, data_loader=dataloader, data_type='train', epoch=1, model=model)
 
         self.avg_epoch_cd_loss = .0
         self.avg_epoch_emd_loss = .0
@@ -191,7 +191,7 @@ def validImgNICE():
                         datefmt='%Y-%m-%d %H:%M:%S')
     config.show_config()
 
-    valid_dataset = PCDataset(config=config, split_dataset_type='valid')
+    valid_dataset = PCDataset(config=config, split_dataset_type='train')
 
     valid_dataloader = DataLoader(dataset=valid_dataset,
                                   batch_size=config.network.batch_size,
