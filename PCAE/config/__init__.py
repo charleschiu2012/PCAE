@@ -11,7 +11,7 @@ from .wandb import WandbConfig
 from .nice import NICEConfig
 
 # Comment below code to enable only cpu usage or parallel gpu usage
-os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3,4,5,6,7'
+# os.environ['CUDA_VISIBLE_DEVICES'] = '0,1,2,3,4,5,6,7'
 torch.cuda.empty_cache()
 gc.collect()
 

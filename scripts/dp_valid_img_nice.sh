@@ -28,7 +28,7 @@ python dp_valid_img_nice.py \
 --mask_config 1. \
 --nice_epoch "PCFlow/epoch300.pth" \
 --project_name "Analogy" \
---run_name "ImgNICE_valid_trainset" \
+--run_name "ImgNICE" \
 --machine_id "TWCC" \
 --step_loss_freq 500 \
 --visual_flag

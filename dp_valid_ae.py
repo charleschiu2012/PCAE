@@ -80,6 +80,7 @@ class AEValidSession(Network):
 
         self.avg_epoch_cd_loss = 0.0
         self.avg_epoch_emd_loss = 0.0
+        self.data_length = 0
         self.model_util = ModelUtil(config=config)
         self.models_path = self.model_util.get_models_path(config.network.checkpoint_path)
         self.visualizer = WandbVisualizer(config=config, job_type='valid',
@@ -96,6 +97,8 @@ class AEValidSession(Network):
             with torch.no_grad():
                 for idx, (inputs_pc, targets, _) in enumerate(self.get_data()):
                     final_step = idx
+                    self.data_length += len(inputs_pc)
+
                     _, predicts = self.model(inputs_pc)
                     cd_loss = chamfer_distance_loss(predicts, targets)
                     _emd_loss = emd_loss(predicts, targets)
@@ -106,6 +109,7 @@ class AEValidSession(Network):
             self.log_epoch_loss()
             self.avg_epoch_cd_loss = .0
             self.avg_epoch_emd_loss = .0
+            self.data_length = 0
 
     def set_model(self):
         models = {'PointNetAE': PointNetAE, 'LMNetAE': LMNetAE, 'LMImgEncoder': LMImgEncoder}
@@ -114,8 +118,8 @@ class AEValidSession(Network):
         self.model = self.model_util.set_model_parallel_gpu(self.model)
 
     def log_epoch_loss(self):
-        self.avg_epoch_cd_loss /= config.dataset.dataset_size[self._data_type]
-        self.avg_epoch_emd_loss /= config.dataset.dataset_size[self._data_type]
+        self.avg_epoch_cd_loss /= self.data_length
+        self.avg_epoch_emd_loss /= self.data_length
 
         logging.info('Logging Epoch Loss...')
         if config.wandb.visual_flag:

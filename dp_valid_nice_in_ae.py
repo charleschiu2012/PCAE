@@ -100,6 +100,7 @@ class NICEAEValidSession(Network):
         self.avg_epoch_loss = 0.0
         self.avg_epoch_cd_loss = 0.0
         self.avg_epoch_log_prob_loss = 0.0
+        self.data_length = 0
         self.prior_model = None
         self.pc_decoder = None
         self.pc_flow = None
@@ -127,6 +128,8 @@ class NICEAEValidSession(Network):
                 final_step = 0
                 for idx, (inputs_pc, targets, pc_ids) in enumerate(self.get_data()):
                     final_step = idx
+                    self.data_length += len(inputs_pc)
+
                     latent_pcs, predictions = self.model(inputs_pc)
 
                     log_prob_loss = -self.pc_flow(x=latent_pcs).mean()
@@ -142,6 +145,7 @@ class NICEAEValidSession(Network):
                 self.avg_epoch_loss = .0
                 self.avg_epoch_cd_loss = .0
                 self.avg_epoch_log_prob_loss = .0
+                self.data_length = 0
 
     def set_model(self):
         """Prior Model
@@ -159,9 +163,9 @@ class NICEAEValidSession(Network):
                                             betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
 
     def log_epoch_loss(self):
-        self.avg_epoch_loss /= config.dataset.dataset_size[self._data_type]
-        self.avg_epoch_cd_loss /= config.dataset.dataset_size[self._data_type]
-        self.avg_epoch_log_prob_loss /= config.dataset.dataset_size[self._data_type]
+        self.avg_epoch_loss /= self.data_length
+        self.avg_epoch_cd_loss /= self.data_length
+        self.avg_epoch_log_prob_loss /= self.data_length
 
         logging.info('Logging Epoch Loss...')
         if ((argument.local_rank is not None) and config.cuda.rank[0] == 0) and config.wandb.visual_flag:

@@ -86,6 +86,7 @@ class VAETrainSession(Network):
         self.avg_epoch_cd_loss = 0.0
         self.avg_step_kld_loss = 0.0
         self.avg_epoch_kld_loss = 0.0
+        self.data_length = 0
         self.prior_model = None
         self.pc_decoder = None
         self.model_util = ModelUtil(config=config)
@@ -112,6 +113,8 @@ class VAETrainSession(Network):
             final_step = 0
             for idx, (inputs_img, inputs_pc, targets, _, _) in enumerate(self.get_data()):
                 final_step = idx
+                self.data_length += len(inputs_pc)
+
                 self.optimizer.zero_grad()
                 with torch.no_grad():
                     latent_pc, _ = self.prior_model(inputs_pc)
@@ -140,6 +143,7 @@ class VAETrainSession(Network):
             self.avg_epoch_loss = .0
             self.avg_epoch_cd_loss = .0
             self.avg_epoch_kld_loss = .0
+            self.data_length = 0
             self._epoch += 1
 
         if config.cuda.dataparallel_mode == 'DistributedDataParallel':
@@ -189,10 +193,9 @@ class VAETrainSession(Network):
                                               loss_name='kld')
 
     def log_epoch_loss(self):
-        if config.cuda.dataparallel_mode == 'Dataparallel':
-            self.avg_epoch_loss /= config.dataset.dataset_size[self._data_type]
-        elif config.cuda.dataparallel_mode == 'DistributedDataParallel':
-            self.avg_epoch_loss /= (config.dataset.dataset_size[self._data_type] / len(config.cuda.parallel_gpu_ids))
+        self.avg_epoch_loss /= self.data_length
+        self.avg_epoch_cd_loss /= self.data_length
+        self.avg_epoch_kld_loss /= self.data_length
 
         logging.info('Logging Epoch Loss...')
         if ((argument.local_rank is not None) and config.cuda.rank[0] == 0) and config.wandb.visual_flag:

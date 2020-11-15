@@ -103,6 +103,7 @@ class ImgNICETrainSession(Network):
 
         self.avg_step_loss = .0
         self.avg_epoch_loss = .0
+        self.data_length = 0
         self.pc_flow = None
         self.img_flow = None
         self.prior_model = None
@@ -132,19 +133,21 @@ class ImgNICETrainSession(Network):
             logging.info('Start training epoch %d' % (epoch_idx + 1))
 
             if config.cuda.dataparallel_mode == 'DistributedDataParallel':
-                self.sampler.set_epoch(self._epoch)
+                self.sampler.set_epoch(epoch_idx)
 
             final_step = 0
             for idx, (inputs_img, inputs_pc, targets, _, _) in enumerate(self.get_data()):
                 final_step = idx
+                self.data_length += len(inputs_pc)
                 with torch.no_grad():
                     latent_pcs, _ = self.prior_model(inputs_pc)
-                    prior_mu, _ = self.pc_flow.module.f(latent_pcs)
+                    # prior_mu, _ = self.pc_flow.module.f(latent_pcs)
 
                 self.optimizer.zero_grad()
                 self.optimizer_f.zero_grad()
                 latent_imgs = self.model(inputs_img)
-                loss = -self.img_flow(x=latent_imgs, prior_mu=prior_mu).mean()
+                # loss = -self.img_flow(x=latent_imgs, prior_mu=prior_mu).mean()
+                loss = -self.img_flow(x=latent_imgs, prior_mu=latent_pcs).mean()
 
                 loss.backward()
                 self.optimizer.step()
@@ -156,10 +159,11 @@ class ImgNICETrainSession(Network):
             logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
             img_ck_path = config.network.checkpoint_path
             self.model_util.save_model(model=self.model, ck_path=img_ck_path, epoch=self._epoch)
-            img_flow_ck_path = config.home_dir + '/data/LMNet-data/checkpoint/DDP/ImgFlow'
+            img_flow_ck_path = config.home_dir + '/data/LMNet-data/checkpoint/DDP/ImgFlow_prior_shift_dp'
             self.model_util.save_model(model=self.img_flow, ck_path=img_flow_ck_path, epoch=self._epoch)
             self.log_epoch_loss()
             self.avg_epoch_loss = .0
+            self.data_length = 0
             self._epoch += 1
 
         if config.cuda.dataparallel_mode == 'DistributedDataParallel':
@@ -167,8 +171,6 @@ class ImgNICETrainSession(Network):
 
     def set_model(self):
         self.model = LMImgEncoder(latent_size=config.network.latent_size)
-        # self.model = torch.nn.Sequential(models.resnet50(pretrained=True),
-        #                                  torch.nn.Linear(1000, config.network.latent_size))
         self.model = self.model_util.set_model_device(self.model)
         self.model = self.model_util.set_model_parallel_gpu(self.model)
         self._epoch = self.model_util.load_model_pretrain(self.model, self._pretrained_epoch, self._is_scratch)
@@ -183,11 +185,15 @@ class ImgNICETrainSession(Network):
         """Prior Model
         """
         self.prior_model = LMNetAE(config.dataset.resample_amount)
+        self.prior_model = self.model_util.set_model_device(self.prior_model)
+        self.prior_model = self.model_util.set_model_parallel_gpu(self.prior_model)
         self.prior_model = self.model_util.load_trained_model(self.prior_model, config.network.prior_epoch)
         """PC Flow
         """
         self.pc_flow = NICE(prior=self.prior, coupling=config.nice.coupling, in_out_dim=self.full_dim,
                             mid_dim=config.nice.mid_dim, hidden=self.hidden, mask_config=config.nice.mask_config)
+        self.pc_flow = self.model_util.set_model_device(self.pc_flow)
+        self.pc_flow = self.model_util.set_model_parallel_gpu(self.pc_flow)
         self.pc_flow = self.model_util.load_trained_model(self.pc_flow, config.nice.nice_epoch)
 
     def log_step_loss(self, loss, step_idx):
@@ -204,10 +210,7 @@ class ImgNICETrainSession(Network):
                 self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss, loss_name='log_prob')
 
     def log_epoch_loss(self):
-        if config.cuda.dataparallel_mode == 'Dataparallel':
-            self.avg_epoch_loss /= config.dataset.dataset_size[self._data_type]
-        elif config.cuda.dataparallel_mode == 'DistributedDataParallel':
-            self.avg_epoch_loss /= (config.dataset.dataset_size[self._data_type] / len(config.cuda.parallel_gpu_ids))
+        self.avg_epoch_loss /= self.data_length
 
         logging.info('Logging Epoch Loss...')
         if ((argument.local_rank is not None) and config.cuda.rank[0] == 0) and config.wandb.visual_flag:

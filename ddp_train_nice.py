@@ -100,6 +100,7 @@ class NICETrainSession(Network):
 
         self.avg_step_loss = .0
         self.avg_epoch_loss = .0
+        self.data_length = 0
         self.prior_model = None
         self.pc_decoder = None
         self.model_util = ModelUtil(config=config)
@@ -130,6 +131,8 @@ class NICETrainSession(Network):
             final_step = 0
             for idx, (inputs_pc, targets, pc_ids) in enumerate(self.get_data()):
                 final_step = idx
+                self.data_length += len(inputs_pc)
+
                 with torch.no_grad():
                     latent_pcs, _ = self.prior_model(inputs_pc)
                 self.optimizer.zero_grad()
@@ -146,6 +149,7 @@ class NICETrainSession(Network):
             self.model_util.save_model(model=self.model, ck_path=nice_ck_path, epoch=self._epoch)
             self.log_epoch_loss()
             self.avg_epoch_loss = .0
+            self.data_length = 0
             self._epoch += 1
 
         if config.cuda.dataparallel_mode == 'DistributedDataParallel':
@@ -184,10 +188,7 @@ class NICETrainSession(Network):
                 self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss, loss_name='log_prob')
 
     def log_epoch_loss(self):
-        if config.cuda.dataparallel_mode == 'Dataparallel':
-            self.avg_epoch_loss /= config.dataset.dataset_size[self._data_type]
-        elif config.cuda.dataparallel_mode == 'DistributedDataParallel':
-            self.avg_epoch_loss /= (config.dataset.dataset_size[self._data_type] / len(config.cuda.parallel_gpu_ids))
+        self.avg_epoch_loss /= self.data_length
 
         logging.info('Logging Epoch Loss...')
         if ((argument.local_rank is not None) and config.cuda.rank[0] == 0) and config.wandb.visual_flag:

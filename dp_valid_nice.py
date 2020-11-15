@@ -98,6 +98,7 @@ class NICEValidSession(Network):
             self.prior = torch.distributions.Normal(torch.tensor(0.).cuda(), torch.tensor(1.).cuda())
 
         self.avg_epoch_loss = .0
+        self.data_length = 0
         self.prior_model = None
         # self.pc_decoder = None
         self.model_util = ModelUtil(config=config)
@@ -123,6 +124,8 @@ class NICEValidSession(Network):
             with torch.no_grad():
                 for idx, (inputs_pc, targets, pc_ids) in enumerate(self.get_data()):
                     final_step = idx
+                    self.data_length += len(inputs_pc)
+
                     ae_latents, re_pcs = self.prior_model(inputs_pc)
 
                     z, _ = self.model.module.f(ae_latents)
@@ -133,6 +136,7 @@ class NICEValidSession(Network):
             logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
             self.log_epoch_loss()
             self.avg_epoch_loss = .0
+            self.data_length = 0
 
     def set_model(self):
         self.model = NICE(prior=self.prior,
@@ -153,7 +157,7 @@ class NICEValidSession(Network):
         # self.pc_decoder = self.model_util.freeze_model(self.model_util.set_model_parallel_gpu(self.pc_decoder))
 
     def log_epoch_loss(self):
-        self.avg_epoch_loss /= config.dataset.dataset_size[self._data_type]
+        self.avg_epoch_loss /= self.data_length
 
         logging.info('Logging Epoch Loss...')
         if config.wandb.visual_flag:

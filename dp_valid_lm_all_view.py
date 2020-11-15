@@ -81,6 +81,7 @@ class LMValidSession(Network):
         self.avg_epoch_l1_loss = .0
         self.avg_epoch_cd_loss = .0
         self.avg_epoch_emd_loss = .0
+        self.data_length = 0
         self.prior_model = None
         self.pc_decoder = None
         self.model_util = ModelUtil(config=config)
@@ -101,6 +102,7 @@ class LMValidSession(Network):
             with torch.no_grad():
                 for idx, (inputs_imgs, inputs_pc, targets, _, _) in enumerate(self.get_data()):
                     final_step = idx
+                    self.data_length += len(inputs_pc)
 
                     all_view_latent_imgs = self.model(inputs_imgs)
                     latent_imgs_list = torch.split(all_view_latent_imgs, 24, dim=0)
@@ -122,6 +124,7 @@ class LMValidSession(Network):
             self.avg_epoch_l1_loss = .0
             self.avg_epoch_cd_loss = .0
             self.avg_epoch_emd_loss = .0
+            self.data_length = 0
 
     def set_model(self):
         self.model = LMImgEncoder(latent_size=config.network.latent_size)
@@ -139,9 +142,9 @@ class LMValidSession(Network):
         self.pc_decoder = self.model_util.freeze_model(self.model_util.set_model_parallel_gpu(self.pc_decoder))
 
     def log_epoch_loss(self):
-        self.avg_epoch_l1_loss /= config.dataset.dataset_size[self._data_type]
-        self.avg_epoch_cd_loss /= config.dataset.dataset_size[self._data_type]
-        self.avg_epoch_emd_loss /= config.dataset.dataset_size[self._data_type]
+        self.avg_epoch_l1_loss /= self.data_length
+        self.avg_epoch_cd_loss /= self.data_length
+        self.avg_epoch_emd_loss /= self.data_length
 
         logging.info('Logging Epoch Loss...')
         if config.wandb.visual_flag:

@@ -106,6 +106,7 @@ class NICEAETrainSession(Network):
         self.avg_epoch_cd_loss = 0.0
         self.avg_step_log_prob_loss = 0.0
         self.avg_epoch_log_prob_loss = 0.0
+        self.data_length = 0
         self.prior_model = None
         self.decoder = None
         self.pc_flow = None
@@ -137,6 +138,8 @@ class NICEAETrainSession(Network):
             final_step = 0
             for idx, (inputs_pc, targets, pc_ids) in enumerate(self.get_data()):
                 final_step = idx
+                self.data_length += len(inputs_pc)
+
                 self.optimizer.zero_grad()
                 self.optimizer_f.zero_grad()
                 latent_pcs, predictions = self.model(inputs_pc)
@@ -166,6 +169,7 @@ class NICEAETrainSession(Network):
             self.avg_epoch_loss = .0
             self.avg_epoch_cd_loss = .0
             self.avg_epoch_log_prob_loss = .0
+            self.data_length = 0
             self._epoch += 1
 
         if config.cuda.dataparallel_mode == 'DistributedDataParallel':
@@ -217,15 +221,9 @@ class NICEAETrainSession(Network):
                                               loss_name='log_prob')
 
     def log_epoch_loss(self):
-        if config.cuda.dataparallel_mode == 'Dataparallel':
-            self.avg_epoch_loss /= config.dataset.dataset_size[self._data_type]
-            self.avg_epoch_cd_loss /= config.dataset.dataset_size[self._data_type]
-            self.avg_epoch_log_prob_loss /= config.dataset.dataset_size[self._data_type]
-        elif config.cuda.dataparallel_mode == 'DistributedDataParallel':
-            self.avg_epoch_loss /= (config.dataset.dataset_size[self._data_type] / len(config.cuda.parallel_gpu_ids))
-            self.avg_epoch_cd_loss /= (config.dataset.dataset_size[self._data_type] / len(config.cuda.parallel_gpu_ids))
-            self.avg_epoch_log_prob_loss /= (config.dataset.dataset_size[self._data_type] /
-                                             len(config.cuda.parallel_gpu_ids))
+        self.avg_epoch_loss /= self.data_length
+        self.avg_epoch_cd_loss /= self.data_length
+        self.avg_epoch_log_prob_loss /= self.data_length
 
         logging.info('Logging Epoch Loss...')
         if ((argument.local_rank is not None) and config.cuda.rank[0] == 0) and config.wandb.visual_flag:

@@ -84,6 +84,7 @@ class AETrainSession(Network):
 
         self.avg_step_loss = .0
         self.avg_epoch_loss = .0
+        self.data_length = 0
         self.model_util = ModelUtil(config=config)
         self.visualizer = None
         if config.cuda.dataparallel_mode == 'DistributedDataParallel':
@@ -106,6 +107,8 @@ class AETrainSession(Network):
             final_step = 0
             for idx, (inputs_pc, targets, pc_ids) in enumerate(self.get_data()):
                 final_step = idx
+                self.data_length += len(inputs_pc)
+
                 self.optimizer.zero_grad()
                 latents, predictions = self.model(inputs_pc)
 
@@ -123,6 +126,7 @@ class AETrainSession(Network):
             self.model_util.save_model(model=self.model, ck_path=ae_ck_path, epoch=self._epoch)
             self.log_epoch_loss()
             self.avg_epoch_loss = .0
+            self.data_length = 0
             self._epoch += 1
 
         if config.cuda.dataparallel_mode == 'DistributedDataParallel':
@@ -149,10 +153,7 @@ class AETrainSession(Network):
                 self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss, loss_name='cd')
 
     def log_epoch_loss(self):
-        if config.cuda.dataparallel_mode == 'Dataparallel':
-            self.avg_epoch_loss /= config.dataset.dataset_size[self._data_type]
-        elif config.cuda.dataparallel_mode == 'DistributedDataParallel':
-            self.avg_epoch_loss /= (config.dataset.dataset_size[self._data_type] / len(config.cuda.parallel_gpu_ids))
+        self.avg_epoch_loss /= self.data_length
 
         logging.info('Logging Epoch Loss...')
         if ((argument.local_rank is not None) and config.cuda.rank[0] == 0) and config.wandb.visual_flag:

@@ -100,6 +100,7 @@ class ImgNICEValidSession(Network):
 
         self.avg_epoch_cd_loss = .0
         self.avg_epoch_emd_loss = .0
+        self.data_length = 0
         self.pc_flow = None
         self.img_flow = None
         self.prior_model = None
@@ -132,6 +133,7 @@ class ImgNICEValidSession(Network):
             with torch.no_grad():
                 for idx, (inputs_img, inputs_pc, targets, _, _) in enumerate(self.get_data()):
                     final_step = idx
+                    self.data_length += len(inputs_pc)
 
                     latent_imgs = self.model(inputs_img)
                     z, _ = self.img_flow.module.f(latent_imgs)
@@ -148,6 +150,7 @@ class ImgNICEValidSession(Network):
             self.log_epoch_loss()
             self.avg_epoch_cd_loss = .0
             self.avg_epoch_emd_loss = .0
+            self.data_length = 0
 
     def set_model(self):
         self.model = LMImgEncoder(config.network.latent_size)
@@ -176,8 +179,8 @@ class ImgNICEValidSession(Network):
         self.pc_flow = self.model_util.load_trained_model(self.pc_flow, config.nice.nice_epoch)
 
     def log_epoch_loss(self):
-        self.avg_epoch_cd_loss /= config.dataset.dataset_size[self._data_type]
-        self.avg_epoch_emd_loss /= config.dataset.dataset_size[self._data_type]
+        self.avg_epoch_cd_loss /= self.data_length
+        self.avg_epoch_emd_loss /= self.data_length
 
         logging.info('Logging Epoch Loss...')
         self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='cd',
