@@ -53,7 +53,7 @@ class Config:
                                      dataset_size={'train': int(dataset_size_list[0]),
                                                    'test': int(dataset_size_list[1]),
                                                    'valid': int(dataset_size_list[2])},
-                                     resample_amount=2048,
+                                     resample_amount=argument.resample_amount,
                                      train_class=train_class_list,
                                      test_unseen_flag=argument.test_unseen_flag)
 

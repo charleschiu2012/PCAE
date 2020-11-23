@@ -4,7 +4,7 @@ import torch
 from torch.utils.data import DataLoader
 
 from PCAE.config import Config
-from PCAE.dataloader import PCDataset
+from PCAE.dataloader import PCDataset, ModelNet10
 from PCAE.loss import chamfer_distance_loss, emd_loss
 from PCAE.networks import Network
 from PCAE.models import PointNetAE, LMNetAE, LMImgEncoder
@@ -25,7 +25,7 @@ parser.add_argument('--dataset_name', type=str, required=True, default='LMNet_Sh
                     help='The name of the dataset')
 parser.add_argument('--dataset_size', type=str, required=True,
                     help='The sizes of split dataset')
-parser.add_argument('--resample_amount', type=int, required=True, default=2048,
+parser.add_argument('--resample_amount', type=int, required=True,
                     help='The num of points to sample from original point cloud')
 parser.add_argument('--train_half_class', type=str,
                     help='Train with half of the classes')
@@ -101,14 +101,14 @@ class AEValidSession(Network):
 
                     _, predicts = self.model(inputs_pc)
                     cd_loss = chamfer_distance_loss(predicts, targets)
-                    _emd_loss = emd_loss(predicts, targets)
+                    # _emd_loss = emd_loss(predicts, targets)
                     self.avg_epoch_cd_loss += (cd_loss.item() * len(inputs_pc))
-                    self.avg_epoch_emd_loss += (_emd_loss.item() * len(inputs_pc))
+                    # self.avg_epoch_emd_loss += (_emd_loss.item() * len(inputs_pc))
 
             logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
             self.log_epoch_loss()
             self.avg_epoch_cd_loss = .0
-            self.avg_epoch_emd_loss = .0
+            # self.avg_epoch_emd_loss = .0
             self.data_length = 0
 
     def set_model(self):
@@ -119,20 +119,20 @@ class AEValidSession(Network):
 
     def log_epoch_loss(self):
         self.avg_epoch_cd_loss /= self.data_length
-        self.avg_epoch_emd_loss /= self.data_length
+        # self.avg_epoch_emd_loss /= self.data_length
 
         logging.info('Logging Epoch Loss...')
         if config.wandb.visual_flag:
             if not config.dataset.test_unseen_flag:
                 self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='cd',
                                                valid_epoch_loss=self.avg_epoch_cd_loss)
-                self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='emd',
-                                               valid_epoch_loss=self.avg_epoch_emd_loss)
+                # self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='emd',
+                #                                valid_epoch_loss=self.avg_epoch_emd_loss)
             if config.dataset.test_unseen_flag:
                 self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='unseen_cd',
                                                valid_epoch_loss=self.avg_epoch_cd_loss)
-                self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='unseen_emd',
-                                               valid_epoch_loss=self.avg_epoch_emd_loss)
+                # self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='unseen_emd',
+                #                                valid_epoch_loss=self.avg_epoch_emd_loss)
 
 
 def validAE():
@@ -140,7 +140,13 @@ def validAE():
                         datefmt='%Y-%m-%d %H:%M:%S')
     config.show_config()
 
-    valid_dataset = PCDataset(config=config, split_dataset_type='valid')
+    valid_dataset = None
+    if argument.dataset_name == 'LMNet_ShapeNet_PC':
+        valid_dataset = PCDataset(config=config, split_dataset_type='valid')
+    elif argument.dataset_name == 'ModelNet10':
+        root_dir = '/home/justice113/data/modelnet10_hdf5_2048/'
+        valid_dataset = ModelNet10(root_dir=root_dir, subset='test',
+                                   num_max=2048, num_sample=config.dataset.resample_amount)
 
     valid_dataloader = DataLoader(dataset=valid_dataset,
                                   batch_size=config.network.batch_size,

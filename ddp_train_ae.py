@@ -181,7 +181,8 @@ def trainAE():
         train_dataset = PCDataset(config=config, split_dataset_type='train')
     elif argument.dataset_name == 'ModelNet10':
         root_dir = '/home/justice113/data/modelnet10_hdf5_2048/'
-        train_dataset = ModelNet10(root_dir=root_dir, subset='train')
+        train_dataset = ModelNet10(root_dir=root_dir, subset='train',
+                                   num_max=2048, num_sample=config.dataset.resample_amount)
 
     if config.cuda.dataparallel_mode == 'Dataparallel':
         train_dataloader = DataLoader(dataset=train_dataset,
