@@ -5,7 +5,7 @@ import numpy as np
 from torch.utils.data import DataLoader
 
 from PCAE.config import Config
-from PCAE.dataloader import PCDataset
+from PCAE.dataloader import PCDataset, ModelNet10
 from PCAE.loss import chamfer_distance_loss
 from PCAE.networks import Network
 from PCAE.models import PointNetAE, LMNetAE, LMImgEncoder
@@ -39,7 +39,7 @@ parser.add_argument('--mode_flag', type=str, required=True,
                     help='Mode to train')
 parser.add_argument('--img_encoder', type=str,
                     help='Which Image encoder')
-parser.add_argument('--prior_model', type=str, required=True,
+parser.add_argument('--prior_model', type=str,
                     help='Which point cloud autoencoder')
 parser.add_argument('--checkpoint_path', type=str, required=True,
                     help='Where to store/load weights')
@@ -176,7 +176,12 @@ def trainAE():
     elif argument.local_rank is None:
         config.show_config()
 
-    train_dataset = PCDataset(config=config, split_dataset_type='train')
+    train_dataset = None
+    if argument.dataset_name == 'LMNet_ShapeNet_PC':
+        train_dataset = PCDataset(config=config, split_dataset_type='train')
+    elif argument.dataset_name == 'ModelNet10':
+        root_dir = '/home/justice113/data/modelnet10_hdf5_2048/'
+        train_dataset = ModelNet10(root_dir=root_dir, subset='train')
 
     if config.cuda.dataparallel_mode == 'Dataparallel':
         train_dataloader = DataLoader(dataset=train_dataset,

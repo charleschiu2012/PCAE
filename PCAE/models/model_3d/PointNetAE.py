@@ -143,8 +143,8 @@ class PointNetAE(nn.Module):
         self.decoder = PointDecoder(num_points)
 
     def forward(self, x):
-        x = self.encoder(x)
+        latents = self.encoder(x)
 
-        x = self.decoder(x)
+        x = self.decoder(latents)
 
-        return x
+        return latents, x
