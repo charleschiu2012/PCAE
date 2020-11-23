@@ -122,7 +122,7 @@ class ImgNICEValidSession(Network):
         for i, model_path in enumerate(self.models_path):
             self._epoch = self.model_util.get_epoch_num(model_path) - 1
             self.model_util.test_trained_model(model=self.model, test_epoch=i + 1)
-            self.img_flow = self.model_util.load_trained_model(self.img_flow, "ImgFlow/epoch%.3d.pth" % (i+1))
+            self.img_flow = self.model_util.load_trained_model(self.img_flow, "ImgFlow_prior_shift/epoch%.3d.pth" % (i+1))
 
             self.model.eval()
             self.pc_decoder.eval()

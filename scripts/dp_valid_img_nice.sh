@@ -11,7 +11,7 @@ python dp_valid_img_nice.py \
 --mode_flag "lm" \
 --prior_model "LMNetAE" \
 --img_encoder "LMImgEncoder" \
---checkpoint_path "/data/LMNet-data/checkpoint/DDP/ImgNICE" \
+--checkpoint_path "/data/LMNet-data/checkpoint/DDP/ImgNICE_prior_shift" \
 --prior_epoch "LMNetAE/epoch241.pth" \
 --loss_scale_factor 10000 \
 --batch_size 512 \
@@ -28,7 +28,7 @@ python dp_valid_img_nice.py \
 --mask_config 1. \
 --nice_epoch "PCFlow/epoch300.pth" \
 --project_name "Analogy" \
---run_name "ImgNICE" \
+--run_name "ImgNICE_prior_shift" \
 --machine_id "TWCC" \
 --step_loss_freq 500 \
 --visual_flag
