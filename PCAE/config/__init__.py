@@ -62,6 +62,7 @@ class Config:
                                      prior_model=argument.prior_model,  # PointNetAE LMNetAE
                                      checkpoint_path=self.home_dir + argument.checkpoint_path,
                                      prior_epoch=argument.prior_epoch,
+                                     img_encoder_epoch=argument.img_encoder_epoch,
                                      loss_scale_factor=argument.loss_scale_factor,
                                      batch_size=argument.batch_size,
                                      latent_size=argument.latent_size,

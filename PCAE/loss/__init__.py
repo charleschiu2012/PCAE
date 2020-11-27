@@ -5,28 +5,8 @@ from kaolin.metrics.point import directed_distance
 from kaolin.metrics.point import iou
 from kaolin.metrics.point import f_score
 from .EMD.emd_module import emdModule
+from .pytorch_ssim import SSIM
 
-
-# class PCLoss:
-#     def __init__(self):
-#         self.loss = None
-#
-#         self.set_loss_func(config.network.loss_func)
-#
-#     def set_loss_func(self, loss_func_type):
-#         if loss_func_type == 'cd':
-#             self.loss = self.chamfer_distance
-#         elif loss_func_type == 'directed_distance':
-#             self.loss = self.directed_distance
-#         elif loss_func_type == 'iou':
-#             self.loss = self.iou
-#         elif loss_func_type == 'f_score':
-#             self.loss = self.f_score
-#         elif loss_func_type == 'emd':
-#             self.loss = self.emd_loss
-#         elif loss_func_type == 'emd+cd':
-#             self.loss = self.emd_and_cd
-#
 
 def chamfer_distance_loss(s1: torch.Tensor, s2: torch.Tensor, w1: float = 1.0, w2: float = 1.0):
     assert (s1.dim() == s2.dim()), 'S1 and S2 must have the same dimesionality'
@@ -51,6 +31,15 @@ def emd_loss(predict, target, eps=1e-4, iters=10):
 
     # return torch.sqrt(dist).mean(1).mean()
     return torch.sqrt(dist).mean()
+
+
+def ssim_loss(predict, target, window_size=11):
+    """bigger SSIM loss the better,value max at 1 to be exactly same."""
+    _ssim_loss = SSIM(window_size=window_size)
+
+    loss = 1 - _ssim_loss(predict, target)
+
+    return loss
 
 
 def directed_distance_loss(s1: torch.Tensor, s2: torch.Tensor, mean: bool = True):
