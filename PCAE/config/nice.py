@@ -2,13 +2,12 @@ class NICEConfig:
     def __init__(self,
                  batch_size: int,
                  learning_rate: float,
-                 latent: str,
-                 mid_dim: int,
                  num_iters: int,
                  sample_size: int,
-                 coupling: int,
-                 mask_config: float,
-                 nice_epoch: int):
+                 latent: str = 'normal',
+                 mid_dim: int = 128,
+                 coupling: int = 4,
+                 mask_config: float = 1.):
 
         self.batch_size = batch_size
         self.learning_rate = learning_rate
@@ -18,4 +17,3 @@ class NICEConfig:
         self.sample_size = sample_size
         self.coupling = coupling
         self.mask_config = mask_config
-        self.nice_epoch = nice_epoch

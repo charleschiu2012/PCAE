@@ -63,13 +63,14 @@ class Config:
                                      checkpoint_path=self.home_dir + argument.checkpoint_path,
                                      prior_epoch=argument.prior_epoch,
                                      img_encoder_epoch=argument.img_encoder_epoch,
+                                     nice_epoch=argument.nice_epoch,
                                      loss_scale_factor=argument.loss_scale_factor,
                                      batch_size=argument.batch_size,
                                      latent_size=argument.latent_size,
                                      z_dim=argument.z_dim,
                                      epoch_num=argument.epoch_num,
                                      learning_rate=argument.learning_rate)
-        if argument.mode_flag == 'nice' or (argument.nice_epoch is not None):
+        if argument.mode_flag == 'nice':
             self.nice = NICEConfig(batch_size=argument.nice_batch_size,
                                    learning_rate=argument.nice_lr,
                                    latent=argument.latent_distribution,
@@ -77,8 +78,7 @@ class Config:
                                    num_iters=argument.num_iters,
                                    sample_size=argument.num_sample,
                                    coupling=argument.coupling,
-                                   mask_config=argument.mask_config,
-                                   nice_epoch=argument.nice_epoch)
+                                   mask_config=argument.mask_config)
 
         self.wandb = WandbConfig(project_name=argument.project_name,
                                  run_name=argument.run_name,
