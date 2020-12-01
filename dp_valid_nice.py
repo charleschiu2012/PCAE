@@ -8,6 +8,7 @@ from PCAE.config import Config
 from PCAE.dataloader import PCDataset
 from PCAE.networks import Network
 from PCAE.models import LMNetAE, NICE
+from PCAE.loss import chamfer_distance_loss, emd_loss
 from PCAE.visualizer import WandbVisualizer
 from PCAE.utils import ModelUtil
 
@@ -98,15 +99,16 @@ class NICEValidSession(Network):
     def __init__(self, dataloader, model=None):
         super().__init__(config=config, data_loader=dataloader, data_type='valid', epoch=1, model=model)
 
-        self.full_dim = 512
+        self.full_dim = config.network.latent_size
         self.hidden = 5
         if config.nice.latent == 'normal':
             self.prior = torch.distributions.Normal(torch.tensor(0.).cuda(), torch.tensor(1.).cuda())
 
-        self.avg_epoch_loss = .0
+        self.avg_epoch_cd_loss = .0
+        # self.avg_epoch_emd_loss = .0
         self.data_length = 0
         self.prior_model = None
-        # self.pc_decoder = None
+        self.pc_decoder = None
         self.model_util = ModelUtil(config=config)
         self.models_path = self.model_util.get_models_path(config.network.checkpoint_path)
         self.visualizer = WandbVisualizer(config=config, job_type='valid',
@@ -125,7 +127,7 @@ class NICEValidSession(Network):
 
             self.model.eval()
             self.prior_model.eval()
-            # self.pc_decoder.eval()
+            self.pc_decoder.eval()
             final_step = 0
             with torch.no_grad():
                 for idx, (inputs_pc, targets, pc_ids) in enumerate(self.get_data()):
@@ -136,12 +138,17 @@ class NICEValidSession(Network):
 
                     z, _ = self.model.module.f(ae_latents)
                     re_latents = self.model.module.g(z)
-                    mse_loss = torch.nn.MSELoss()(re_latents, ae_latents)
-                    self.avg_epoch_loss += (mse_loss.item() * len(inputs_pc))
+                    prediction_imgs = self.pc_decoder(re_latents)
+                    cd_loss = chamfer_distance_loss(prediction_imgs, targets)
+                    # _emd_loss = emd_loss(prediction_imgs, targets)
+
+                    self.avg_epoch_cd_loss += (cd_loss.item() * len(inputs_pc))
+                    # self.avg_epoch_emd_loss += (_emd_loss.item() * len(inputs_pc))
 
             logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
             self.log_epoch_loss()
-            self.avg_epoch_loss = .0
+            self.avg_epoch_cd_loss = .0
+            # self.avg_epoch_emd_loss = .0
             self.data_length = 0
 
     def set_model(self):
@@ -159,22 +166,23 @@ class NICEValidSession(Network):
         self.prior_model = self.model_util.set_model_device(self.prior_model)
         self.prior_model = self.model_util.set_model_parallel_gpu(self.prior_model)
         self.prior_model = self.model_util.load_trained_model(self.prior_model, config.network.prior_epoch)
-        # '''PC Decoder
-        # '''
-        # self.pc_decoder = self.prior_model.module.decoder
-        # self.pc_decoder = self.model_util.freeze_model(self.model_util.set_model_parallel_gpu(self.pc_decoder))
+        '''PC Decoder
+        '''
+        self.pc_decoder = torch.nn.Sequential(self.prior_model.module.fc_de,
+                                              self.prior_model.module.decoder)
+        self.pc_decoder = self.model_util.set_model_device(self.pc_decoder)
+        self.pc_decoder = self.model_util.set_model_parallel_gpu(self.pc_decoder)
+        self.pc_decoder = self.model_util.freeze_model(self.model_util.set_model_parallel_gpu(self.pc_decoder))
 
     def log_epoch_loss(self):
-        self.avg_epoch_loss /= self.data_length
+        self.avg_epoch_cd_loss /= self.data_length
+        # self.avg_epoch_emd_loss /= self.data_length
 
         logging.info('Logging Epoch Loss...')
-        if config.wandb.visual_flag:
-            if not config.dataset.test_unseen_flag:
-                self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='mse',
-                                               valid_epoch_loss=self.avg_epoch_loss)
-            if config.dataset.test_unseen_flag:
-                self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='unseen_mse',
-                                               valid_epoch_loss=self.avg_epoch_loss)
+        self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='cd',
+                                       valid_epoch_loss=self.avg_epoch_cd_loss)
+        # self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='emd',
+        #                                valid_epoch_loss=self.avg_epoch_emd_loss)
 
 
 def validNICE():

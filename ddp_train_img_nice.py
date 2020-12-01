@@ -114,7 +114,7 @@ class ImgNICETrainSession(Network):
         if config.cuda.dataparallel_mode == 'DistributedDataParallel':
             self.sampler = sampler
 
-        self.full_dim = 512
+        self.full_dim = config.network.latent_size
         self.hidden = 5
         if config.nice.latent == 'normal':
             self.prior = torch.distributions.Normal(torch.tensor(0.).cuda(), torch.tensor(1.).cuda())
@@ -143,13 +143,13 @@ class ImgNICETrainSession(Network):
                 self.data_length += len(inputs_pc)
                 with torch.no_grad():
                     latent_pcs, _ = self.prior_model(inputs_pc)
-                    # prior_mu, _ = self.pc_flow.module.f(latent_pcs)
+                    prior_mu, _ = self.pc_flow.module.f(latent_pcs)
 
                 self.optimizer.zero_grad()
                 self.optimizer_f.zero_grad()
                 latent_imgs = self.model(inputs_img)
-                # loss = -self.img_flow(x=latent_imgs, prior_mu=prior_mu).mean()
-                loss = -self.img_flow(x=latent_imgs, prior_mu=latent_pcs).mean()
+                loss = -self.img_flow(x=latent_imgs, prior_mu=prior_mu).mean()
+                # loss = -self.img_flow(x=latent_imgs, prior_mu=latent_pcs).mean()
 
                 loss.backward()
                 self.optimizer.step()
@@ -161,7 +161,7 @@ class ImgNICETrainSession(Network):
             logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
             img_ck_path = config.network.checkpoint_path
             self.model_util.save_model(model=self.model, ck_path=img_ck_path, epoch=self._epoch)
-            img_flow_ck_path = config.home_dir + '/data/LMNet-data/checkpoint/DDP/ImgFlow_chair'
+            img_flow_ck_path = config.home_dir + '/data/LMNet-data/checkpoint/DP/ImgFlow_chair'
             self.model_util.save_model(model=self.img_flow, ck_path=img_flow_ck_path, epoch=self._epoch)
             self.log_epoch_loss()
             self.avg_epoch_loss = .0

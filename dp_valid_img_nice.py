@@ -101,7 +101,7 @@ class ImgNICEValidSession(Network):
         super().__init__(config=config, data_loader=dataloader, data_type='train', epoch=1, model=model)
 
         self.avg_epoch_cd_loss = .0
-        self.avg_epoch_emd_loss = .0
+        # self.avg_epoch_emd_loss = .0
         self.data_length = 0
         self.pc_flow = None
         self.img_flow = None
@@ -111,7 +111,7 @@ class ImgNICEValidSession(Network):
         self.models_path = self.model_util.get_models_path(config.network.checkpoint_path)
         self.visualizer = None
 
-        self.full_dim = 512
+        self.full_dim = config.network.latent_size
         self.hidden = 5
         if config.nice.latent == 'normal':
             self.prior = torch.distributions.Normal(torch.tensor(0.).cuda(), torch.tensor(1.).cuda())
@@ -124,7 +124,7 @@ class ImgNICEValidSession(Network):
         for i, model_path in enumerate(self.models_path):
             self._epoch = self.model_util.get_epoch_num(model_path) - 1
             self.model_util.test_trained_model(model=self.model, test_epoch=i + 1)
-            self.img_flow = self.model_util.load_trained_model(self.img_flow, "ImgFlow_chair/epoch%.3d.pth" % (i+1))
+            self.img_flow = self.model_util.load_trained_model(self.img_flow, "DP/ImgFlow_chair/epoch%.3d.pth" % (i+1))
 
             self.model.eval()
             self.pc_decoder.eval()
@@ -138,20 +138,20 @@ class ImgNICEValidSession(Network):
                     self.data_length += len(inputs_pc)
 
                     latent_imgs = self.model(inputs_img)
-                    z, _ = self.img_flow.module.f(latent_imgs)
-                    re_latents = self.pc_flow.module.g(z)
+                    prior_mu, _ = self.img_flow.module.f(latent_imgs)
+                    re_latents = self.pc_flow.module.g(prior_mu)
                     prediction_imgs = self.pc_decoder(re_latents)
 
                     cd_loss = chamfer_distance_loss(prediction_imgs, targets)
-                    _emd_loss = emd_loss(prediction_imgs, targets)
+                    # _emd_loss = emd_loss(prediction_imgs, targets)
 
                     self.avg_epoch_cd_loss += (cd_loss.item() * len(inputs_pc))
-                    self.avg_epoch_emd_loss += (_emd_loss.item() * len(inputs_pc))
+                    # self.avg_epoch_emd_loss += (_emd_loss.item() * len(inputs_pc))
 
             logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
             self.log_epoch_loss()
             self.avg_epoch_cd_loss = .0
-            self.avg_epoch_emd_loss = .0
+            # self.avg_epoch_emd_loss = .0
             self.data_length = 0
 
     def set_model(self):
@@ -170,7 +170,10 @@ class ImgNICEValidSession(Network):
         self.prior_model = self.model_util.set_model_device(self.prior_model)
         self.prior_model = self.model_util.set_model_parallel_gpu(self.prior_model)
         self.prior_model = self.model_util.load_trained_model(self.prior_model, config.network.prior_epoch)
-        self.pc_decoder = self.prior_model.module.decoder
+        self.pc_decoder = torch.nn.Sequential(self.prior_model.module.fc_de,
+                                              self.prior_model.module.decoder)
+        self.pc_decoder = self.model_util.set_model_device(self.pc_decoder)
+        self.pc_decoder = self.model_util.set_model_parallel_gpu(self.pc_decoder)
         self.pc_decoder = self.model_util.freeze_model(self.model_util.set_model_parallel_gpu(self.pc_decoder))
         '''NICE
         '''
@@ -182,13 +185,13 @@ class ImgNICEValidSession(Network):
 
     def log_epoch_loss(self):
         self.avg_epoch_cd_loss /= self.data_length
-        self.avg_epoch_emd_loss /= self.data_length
+        # self.avg_epoch_emd_loss /= self.data_length
 
         logging.info('Logging Epoch Loss...')
         self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='cd',
                                        valid_epoch_loss=self.avg_epoch_cd_loss)
-        self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='emd',
-                                       valid_epoch_loss=self.avg_epoch_emd_loss)
+        # self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='emd',
+        #                                valid_epoch_loss=self.avg_epoch_emd_loss)
 
 
 def validImgNICE():

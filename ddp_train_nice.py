@@ -112,7 +112,7 @@ class NICETrainSession(Network):
         if config.cuda.dataparallel_mode == 'DistributedDataParallel':
             self.sampler = sampler
 
-        self.full_dim = 512
+        self.full_dim = config.network.latent_size
         self.hidden = 5
         if config.nice.latent == 'normal':
             self.prior = torch.distributions.Normal(torch.tensor(0.).cuda(), torch.tensor(1.).cuda())
@@ -177,7 +177,10 @@ class NICETrainSession(Network):
         self.prior_model = self.model_util.load_trained_model(self.prior_model, config.network.prior_epoch)
         # '''PC Decoder
         # '''
-        # self.pc_decoder = self.prior_model.module.decoder
+        # self.pc_decoder = torch.nn.Sequential(self.prior_model.module.fc_de,
+        #                                       self.prior_model.module.decoder)
+        # self.pc_decoder = self.model_util.set_model_device(self.pc_decoder)
+        # self.pc_decoder = self.model_util.set_model_parallel_gpu(self.pc_decoder)
         # self.pc_decoder = self.model_util.freeze_model(self.model_util.set_model_parallel_gpu(self.pc_decoder))
 
     def log_step_loss(self, loss, step_idx):

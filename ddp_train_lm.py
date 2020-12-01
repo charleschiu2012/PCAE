@@ -121,7 +121,7 @@ class LMTrainSession(Network):
                 loss.backward()
                 self.optimizer.step()
                 loss = (loss.item() / config.network.loss_scale_factor) * len(inputs_pc)
-                self.log_step_loss(loss=loss.item() / config.network.loss_scale_factor, step_idx=idx + 1)
+                self.log_step_loss(loss=loss, step_idx=idx + 1)
                 self.avg_step_loss = 0
 
             logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
@@ -150,7 +150,10 @@ class LMTrainSession(Network):
         self.prior_model = self.model_util.load_trained_model(self.prior_model, config.network.prior_epoch)
         # '''PC Decoder
         # '''
-        # self.pc_decoder = self.prior_model.module.decoder
+        # self.pc_decoder = torch.nn.Sequential(self.prior_model.module.fc_de,
+        #                                       self.prior_model.module.decoder)
+        # self.pc_decoder = self.model_util.set_model_device(self.pc_decoder)
+        # self.pc_decoder = self.model_util.set_model_parallel_gpu(self.pc_decoder)
         # self.pc_decoder = self.model_util.freeze_model(self.model_util.set_model_parallel_gpu(self.pc_decoder))
 
     def log_step_loss(self, loss, step_idx):

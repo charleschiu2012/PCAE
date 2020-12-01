@@ -17,6 +17,7 @@ python dp_valid_img_nice.py \
 --img_encoder "LMImgEncoder" \
 --checkpoint_path "/data/LMNet-data/checkpoint/DP/ImgNICE_encoder_chair" \
 --prior_epoch "DP/LMNetAE_chair/epoch158.pth" \
+--nice_epoch "DP/PCFlow_chair/epoch150.pth" \
 --loss_scale_factor 10000 \
 --batch_size 512 \
 --latent_size 10 \
@@ -30,7 +31,6 @@ python dp_valid_img_nice.py \
 --num_sample 64 \
 --coupling 4 \
 --mask_config 1. \
---nice_epoch "PCFlow/epoch300.pth" \ #TODO
 --project_name "Analogy_chair" \
 --run_name "ImgNICE_encoder_chair" \
 --machine_id "TWCC" \
