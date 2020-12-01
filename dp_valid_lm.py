@@ -44,6 +44,8 @@ parser.add_argument('--checkpoint_path', type=str, required=True,
                     help='Where to store/load weights')
 parser.add_argument('--prior_epoch', type=str, required=True, default='300',
                     help='Which epoch of autoencoder to use to ImgEncoder')
+parser.add_argument('--img_encoder_epoch', type=str,
+                    help='Which epoch of ImgEncoder')
 parser.add_argument('--loss_scale_factor', type=int, required=True, default=10000,
                     help='Scale your loss')
 parser.add_argument('--batch_size', type=int, required=True, default=32,
@@ -128,7 +130,7 @@ class LMValidSession(Network):
         self.model = self.model_util.set_model_parallel_gpu(self.model)
         '''Prior Model
         '''
-        self.prior_model = LMNetAE(config.dataset.resample_amount)
+        self.prior_model = LMNetAE(config.dataset.resample_amount, config.network.latent_size)
         self.prior_model = self.model_util.set_model_device(self.prior_model)
         self.prior_model = self.model_util.set_model_parallel_gpu(self.prior_model)
         self.prior_model = self.model_util.load_trained_model(self.prior_model, config.network.prior_epoch)

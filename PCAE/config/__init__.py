@@ -70,7 +70,7 @@ class Config:
                                      z_dim=argument.z_dim,
                                      epoch_num=argument.epoch_num,
                                      learning_rate=argument.learning_rate)
-        if argument.mode_flag == 'nice':
+        if argument.mode_flag == 'nice' or argument.mode_flag == 'img_nice':
             self.nice = NICEConfig(batch_size=argument.nice_batch_size,
                                    learning_rate=argument.nice_lr,
                                    latent=argument.latent_distribution,

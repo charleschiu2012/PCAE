@@ -15,14 +15,14 @@ class Network:
     def get_data(self):
         for data in iter(self._data_loader):
             device = self.config.cuda.device
-            if (self.config.network.mode_flag == 'ae' or self.config.network.mode_flag == 'nice') and \
-                    self.config.dataset.dataset_size['train'] == 35022:
+            if self.config.network.mode_flag == 'ae' or self.config.network.mode_flag == 'nice':
                 inputs_pc, targets = data[0].to(device).float().permute(0, 2, 1).contiguous(), \
                                      data[1].to(device).float()
                 pc_id = data[2]
 
                 yield inputs_pc, targets, pc_id
-            elif (self.config.network.mode_flag == 'lm') or (self.config.network.mode_flag == 'vae'):
+            elif (self.config.network.mode_flag == 'lm') or (self.config.network.mode_flag == 'vae') or \
+                    (self.config.network.mode_flag == 'img_nice'):
                 inputs_img, inputs_pc, targets = data[0].to(device).float().permute(0, 3, 1, 2).contiguous(), \
                                                  data[1].to(device).float().permute(0, 2, 1).contiguous(), \
                                                  data[2].to(device).float()
@@ -41,12 +41,12 @@ class Network:
                 img_ids, pc_id = data[3], data[4]
 
                 yield inputs_imgs, inputs_pc, targets, img_ids, pc_id
-            elif self.config.network.mode_flag == 'ae' and self.config.dataset.dataset_size['train'] == 3991:
-                inputs_pc = data.to(device).permute(0, 2, 1)
-                targets = copy.deepcopy(data).to(device)
-                pc_id = 'for_further_refinement'
-
-                yield inputs_pc, targets, pc_id
+            # elif self.config.network.mode_flag == 'ae' and self.config.dataset.dataset_size['train'] == 3991:
+            #     inputs_pc = data.to(device).permute(0, 2, 1)
+            #     targets = copy.deepcopy(data).to(device)
+            #     pc_id = 'for_further_refinement'
+            #
+            #     yield inputs_pc, targets, pc_id
 
     def steps_in_an_epoch(self):
         if self.config.dataset.dataset_size[self._data_type] <= self.config.network.batch_size:

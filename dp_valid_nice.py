@@ -43,6 +43,8 @@ parser.add_argument('--checkpoint_path', type=str, required=True,
                     help='Where to store/load weights')
 parser.add_argument('--prior_epoch', type=str, default='300',
                     help='Which epoch of autoencoder to use to ImgEncoder')
+parser.add_argument('--img_encoder_epoch', type=str,
+                    help='Which epoch of ImgEncoder')
 parser.add_argument('--loss_scale_factor', type=int, required=True, default=10000,
                     help='Scale your loss')
 parser.add_argument('--batch_size', type=int, required=True, default=32,
@@ -55,10 +57,14 @@ parser.add_argument('--epoch_num', type=int, required=True, default=300,
                     help='How many epoch to train')
 parser.add_argument('--learning_rate', type=float, required=True,
                     help='Learning rate')
+parser.add_argument('--nice_epoch', type=str, default='NICE/epoch300.pth',
+                    help='Which epoch of NICE to use to ImgEncoder')
 '''nice
 '''
 parser.add_argument('--nice_batch_size', type=int, required=True, default=200,
                     help='Batch size for NICE')
+parser.add_argument('--nice_lr', type=float, required=True, default=5e-5,
+                    help='learning rate for NICE flow')
 parser.add_argument('--latent_distribution', type=str, required=True, default='normal',
                     help='Prior distribution for NICE')
 parser.add_argument('--mid_dim', type=int, required=True, default=128,
@@ -70,7 +76,7 @@ parser.add_argument('--num_sample', type=int, required=True, default=64,
 parser.add_argument('--coupling', type=int, required=True, default=4,
                     help='Number of coupling layers')
 parser.add_argument('--mask_config', type=float, required=True, default=1.,
-                    help='mask_config')  # TODO
+                    help='mask_config')
 '''wandb
 '''
 parser.add_argument('--project_name', type=str, required=True,
@@ -149,7 +155,9 @@ class NICEValidSession(Network):
         self.model = self.model_util.set_model_parallel_gpu(self.model)
         '''Prior Model
         '''
-        self.prior_model = LMNetAE(config.dataset.resample_amount)
+        self.prior_model = LMNetAE(config.dataset.resample_amount, config.network.latent_size)
+        self.prior_model = self.model_util.set_model_device(self.prior_model)
+        self.prior_model = self.model_util.set_model_parallel_gpu(self.prior_model)
         self.prior_model = self.model_util.load_trained_model(self.prior_model, config.network.prior_epoch)
         # '''PC Decoder
         # '''

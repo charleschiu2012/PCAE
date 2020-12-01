@@ -46,6 +46,8 @@ parser.add_argument('--checkpoint_path', type=str, required=True,
                     help='Where to store/load weights')
 parser.add_argument('--prior_epoch', type=str, required=True, default='LMNetAE/epoch300.pth',
                     help='Which epoch of autoencoder to use to ImgEncoder')
+parser.add_argument('--img_encoder_epoch', type=str,
+                    help='Which epoch of ImgEncoder')
 parser.add_argument('--loss_scale_factor', type=int, required=True, default=10000,
                     help='Scale your loss')
 parser.add_argument('--batch_size', type=int, required=True, default=32,
@@ -159,7 +161,7 @@ class ImgNICETrainSession(Network):
             logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
             img_ck_path = config.network.checkpoint_path
             self.model_util.save_model(model=self.model, ck_path=img_ck_path, epoch=self._epoch)
-            img_flow_ck_path = config.home_dir + '/data/LMNet-data/checkpoint/DDP/ImgFlow_prior_shift_dp'
+            img_flow_ck_path = config.home_dir + '/data/LMNet-data/checkpoint/DDP/ImgFlow_chair'
             self.model_util.save_model(model=self.img_flow, ck_path=img_flow_ck_path, epoch=self._epoch)
             self.log_epoch_loss()
             self.avg_epoch_loss = .0
@@ -184,7 +186,7 @@ class ImgNICETrainSession(Network):
                                             betas=(0.9, 0.999), eps=1e-08, weight_decay=0, amsgrad=False)
         """Prior Model
         """
-        self.prior_model = LMNetAE(config.dataset.resample_amount)
+        self.prior_model = LMNetAE(config.dataset.resample_amount, config.network.latent_size)
         self.prior_model = self.model_util.set_model_device(self.prior_model)
         self.prior_model = self.model_util.set_model_parallel_gpu(self.prior_model)
         self.prior_model = self.model_util.load_trained_model(self.prior_model, config.network.prior_epoch)
@@ -194,7 +196,7 @@ class ImgNICETrainSession(Network):
                             mid_dim=config.nice.mid_dim, hidden=self.hidden, mask_config=config.nice.mask_config)
         self.pc_flow = self.model_util.set_model_device(self.pc_flow)
         self.pc_flow = self.model_util.set_model_parallel_gpu(self.pc_flow)
-        self.pc_flow = self.model_util.load_trained_model(self.pc_flow, config.nice.nice_epoch)
+        self.pc_flow = self.model_util.load_trained_model(self.pc_flow, config.network.nice_epoch)
 
     def log_step_loss(self, loss, step_idx):
         self.avg_step_loss += loss
@@ -205,19 +207,19 @@ class ImgNICETrainSession(Network):
             logging.info('Epoch %d, %d Step, loss = %.6f' % (self._epoch, step_idx, self.avg_step_loss))
 
             if ((argument.local_rank is not None) and config.cuda.rank[0] == 0) and config.wandb.visual_flag:
-                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss, loss_name='log_prob')
+                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss, loss_name='log_likeli')
             elif (argument.local_rank is None) and config.wandb.visual_flag:
-                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss, loss_name='log_prob')
+                self.visualizer.log_step_loss(step_idx=step_idx, step_loss=self.avg_step_loss, loss_name='log_likeli')
 
     def log_epoch_loss(self):
         self.avg_epoch_loss /= self.data_length
 
         logging.info('Logging Epoch Loss...')
         if ((argument.local_rank is not None) and config.cuda.rank[0] == 0) and config.wandb.visual_flag:
-            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='log_prob',
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='log_likeli',
                                            train_epoch_loss=self.avg_epoch_loss)
         elif (argument.local_rank is None) and config.wandb.visual_flag:
-            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='log_prob',
+            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='log_likeli',
                                            train_epoch_loss=self.avg_epoch_loss)
 
 

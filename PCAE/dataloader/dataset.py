@@ -26,7 +26,8 @@ class PCDataset(Dataset):
             return len(self.dataset_loader.pc_paths)
         elif (self.config.network.mode_flag == 'lm') \
                 or (self.config.network.mode_flag == 'vae') \
-                or (self.config.network.mode_flag == 'all_view'):
+                or (self.config.network.mode_flag == 'all_view') \
+                or (self.config.network.mode_flag == 'img_nice'):
             return len(self.dataset_loader.split_render_dataset_path)
 
     def __getitem__(self, item):
@@ -35,7 +36,8 @@ class PCDataset(Dataset):
             target = copy.deepcopy(pc)
 
             return pc, target, pc_id
-        elif (self.config.network.mode_flag == 'lm') or (self.config.network.mode_flag == 'vae'):
+        elif (self.config.network.mode_flag == 'lm') or (self.config.network.mode_flag == 'vae') \
+                or (self.config.network.mode_flag == 'img_nice'):
             img, img_id = self.get_img(item)
             pc, pc_id = self.get_pc(item)
             target = copy.deepcopy(pc)
@@ -54,14 +56,15 @@ class PCDataset(Dataset):
             pc_path = self.dataset_loader.pc_paths[item]
         elif (self.config.network.mode_flag == 'lm') \
                 or (self.config.network.mode_flag == 'vae') \
-                or (self.config.network.mode_flag == 'all_view'):
+                or (self.config.network.mode_flag == 'all_view') \
+                or (self.config.network.mode_flag == 'img_nice'):
             pc_path = self.dataset_loader.split_render_dataset_path[item][0]
         # pc = o3d.io.read_point_cloud(pc_path)
         # assert isinstance(pc, o3d.geometry.PointCloud)
         pc = np.load(pc_path)  # N*3
         normalized_pc = pointcloud_util.normalize_pcd(pc)
-        # resampled_pc = pointcloud_util.resample_pcd(normalized_pc, config.dataset.resample_amount)
-        resampled_pc = normalized_pc
+        resampled_pc = pointcloud_util.resample_pcd(normalized_pc, self.config.dataset.resample_amount)
+        # resampled_pc = normalized_pc
         assert isinstance(resampled_pc, np.ndarray)
         assert pointcloud_util.get_point_amount(resampled_pc) > 0
 
@@ -117,13 +120,15 @@ class DatasetLoader:
         self.pc_ids = []
         self.pc_paths = []
         if (self.config.network.mode_flag == 'lm') \
-                or (self.config.network.mode_flag == 'vae')\
-                or (self.config.network.mode_flag == 'all_view'):
+                or (self.config.network.mode_flag == 'vae') \
+                or (self.config.network.mode_flag == 'all_view') \
+                or (self.config.network.mode_flag == 'img_nice'):
             self.split_render_dataset_path = []
 
         self.set_split_dataset_path()
         self.load_pc_ids()
-        if (self.config.network.mode_flag == 'lm') or (self.config.network.mode_flag == 'vae'):
+        if (self.config.network.mode_flag == 'lm') or (self.config.network.mode_flag == 'vae') \
+                or (self.config.network.mode_flag == 'img_nice'):
             self.pair_pc_img()
         elif self.config.network.mode_flag == 'all_view':
             self.pair_pc_all_view_img()
@@ -163,15 +168,14 @@ class DatasetLoader:
             if (self.config.network.mode_flag == 'ae') or (self.config.network.mode_flag == 'nice'):
                 for pc_id in self.pc_ids:
                     self.pc_paths.append(os.path.join(self.config.dataset.dataset_path + 'ShapeNet_pointclouds/', pc_id,
-                                                      'pointcloud_{}.npy'.format(self.config.dataset.resample_amount)))
+                                                      'pointcloud_2048.npy'))
 
     def pair_pc_img(self):
         num_views = 24
         png_files = [(str(i).zfill(2) + '.png') for i in range(num_views)]
         for id_with_view in itertools.product(self.pc_ids, png_files):
             pc_path = os.path.join(self.config.dataset.dataset_path + 'ShapeNet_pointclouds/',
-                                   id_with_view[0],
-                                   'pointcloud_{}.npy'.format(self.config.dataset.resample_amount))
+                                   id_with_view[0], 'pointcloud_2048.npy')
             img_path = os.path.join(self.config.dataset.dataset_path + 'ShapeNetRendering/',
                                     id_with_view[0], 'rendering', id_with_view[1])
             self.split_render_dataset_path.append([pc_path, img_path])

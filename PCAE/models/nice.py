@@ -225,7 +225,7 @@ class ImgNICE(nn.Module):
             log-likelihood of input.
         """
         z, log_det_J = self.f(x)
-        prior_pc = torch.distributions.Normal(prior_mu, torch.tensor(0.01).cuda())
+        prior_pc = torch.distributions.Normal(prior_mu, torch.tensor(1e-5).cuda())
 
         log_ll = torch.sum(prior_pc.log_prob(z), dim=1)
         return log_ll + log_det_J

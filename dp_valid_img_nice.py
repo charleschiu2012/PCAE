@@ -45,6 +45,8 @@ parser.add_argument('--checkpoint_path', type=str, required=True,
                     help='Where to store/load weights')
 parser.add_argument('--prior_epoch', type=str, required=True, default='300',
                     help='Which epoch of autoencoder to use to ImgEncoder')
+parser.add_argument('--img_encoder_epoch', type=str,
+                    help='Which epoch of ImgEncoder')
 parser.add_argument('--loss_scale_factor', type=int, required=True, default=10000,
                     help='Scale your loss')
 parser.add_argument('--batch_size', type=int, required=True, default=32,
@@ -122,7 +124,7 @@ class ImgNICEValidSession(Network):
         for i, model_path in enumerate(self.models_path):
             self._epoch = self.model_util.get_epoch_num(model_path) - 1
             self.model_util.test_trained_model(model=self.model, test_epoch=i + 1)
-            self.img_flow = self.model_util.load_trained_model(self.img_flow, "ImgFlow_prior_shift/epoch%.3d.pth" % (i+1))
+            self.img_flow = self.model_util.load_trained_model(self.img_flow, "ImgFlow_chair/epoch%.3d.pth" % (i+1))
 
             self.model.eval()
             self.pc_decoder.eval()
@@ -164,7 +166,7 @@ class ImgNICEValidSession(Network):
         self.img_flow = self.model_util.set_model_parallel_gpu(self.img_flow)
         '''Prior Model & PC Decoder
         '''
-        self.prior_model = LMNetAE(config.dataset.resample_amount)
+        self.prior_model = LMNetAE(config.dataset.resample_amount, config.network.latent_size)
         self.prior_model = self.model_util.set_model_device(self.prior_model)
         self.prior_model = self.model_util.set_model_parallel_gpu(self.prior_model)
         self.prior_model = self.model_util.load_trained_model(self.prior_model, config.network.prior_epoch)

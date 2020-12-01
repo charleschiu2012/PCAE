@@ -45,6 +45,8 @@ parser.add_argument('--checkpoint_path', type=str, required=True,
                     help='Where to store/load weights')
 parser.add_argument('--prior_epoch', type=str, default='300',
                     help='Which epoch of autoencoder to use to ImgEncoder')
+parser.add_argument('--img_encoder_epoch', type=str,
+                    help='Which epoch of ImgEncoder')
 parser.add_argument('--loss_scale_factor', type=int, required=True, default=10000,
                     help='Scale your loss')
 parser.add_argument('--batch_size', type=int, required=True, default=32,
@@ -134,7 +136,7 @@ class AETrainSession(Network):
 
     def set_model(self):
         models = {'PointNetAE': PointNetAE, 'LMNetAE': LMNetAE, 'LMImgEncoder': LMImgEncoder}
-        self.model = models[config.network.prior_model](config.dataset.resample_amount)
+        self.model = models[config.network.prior_model](config.dataset.resample_amount, config.network.latent_size)
         self.model = self.model_util.set_model_device(self.model)
         self.model = self.model_util.set_model_parallel_gpu(self.model)
         self._epoch = self.model_util.load_model_pretrain(self.model, self._pretrained_epoch, self._is_scratch)

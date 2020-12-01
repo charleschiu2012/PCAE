@@ -43,6 +43,8 @@ parser.add_argument('--checkpoint_path', type=str, required=True,
                     help='Where to store/load weights')
 parser.add_argument('--prior_epoch', type=str, default='300',
                     help='Which epoch of autoencoder to use to ImgEncoder')
+parser.add_argument('--img_encoder_epoch', type=str,
+                    help='Which epoch of ImgEncoder')
 parser.add_argument('--loss_scale_factor', type=int, required=True, default=10000,
                     help='Scale your loss')
 parser.add_argument('--batch_size', type=int, required=True, default=32,
@@ -84,7 +86,7 @@ class AEValidSession(Network):
         self.model_util = ModelUtil(config=config)
         self.models_path = self.model_util.get_models_path(config.network.checkpoint_path)
         self.visualizer = WandbVisualizer(config=config, job_type='valid',
-                                          model=LMNetAE(config.dataset.resample_amount))
+                                          model=LMNetAE(config.dataset.resample_amount, config.network.latent_size))
 
     def validate(self):
         self.set_model()
@@ -113,7 +115,7 @@ class AEValidSession(Network):
 
     def set_model(self):
         models = {'PointNetAE': PointNetAE, 'LMNetAE': LMNetAE, 'LMImgEncoder': LMImgEncoder}
-        self.model = models[config.network.prior_model](config.dataset.resample_amount)
+        self.model = models[config.network.prior_model](config.dataset.resample_amount, config.network.latent_size)
         self.model = self.model_util.set_model_device(self.model)
         self.model = self.model_util.set_model_parallel_gpu(self.model)
 

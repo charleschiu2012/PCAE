@@ -63,16 +63,21 @@ class LMDecoder(nn.Module):
 
 
 class LMNetAE(nn.Module):
-    def __init__(self, num_points):
+    def __init__(self, num_points, z_dim):
         super(LMNetAE, self).__init__()
         self.num_points = num_points
+        self.z_dim = z_dim
         self.encoder = LMEncoder(num_points)
+        self.fc_en = nn.Linear(512, 10)
 
+        self.fc_de = nn.Linear(10, 512)
         self.decoder = LMDecoder(num_points)
 
     def forward(self, x):
-        latent = self.encoder(x)
-        x = self.decoder(latent)
+        x = self.encoder(x)
+        latent = self.fc_en(x)
+        x = self.fc_de(latent)
+        x = self.decoder(x)
 
         return latent, x
 
