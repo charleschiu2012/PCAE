@@ -16,7 +16,7 @@ python dp_valid_lm.py \
 --prior_model "LMNetAE" \
 --img_encoder "LMImgEncoder" \
 --checkpoint_path "/data/LMNet-data/checkpoint/DP/ImgEncoder_L1_chair" \
---prior_epoch "DP/LMNetAE_chair/epoch295.pth" \
+--prior_epoch "DP/LMNetAE_chair/epoch158.pth" \
 --loss_scale_factor 10000 \
 --batch_size 512 \
 --latent_size 10 \
