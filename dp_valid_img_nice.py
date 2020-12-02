@@ -172,8 +172,8 @@ class ImgNICEValidSession(Network):
         self.prior_model = self.model_util.load_trained_model(self.prior_model, config.network.prior_epoch)
         self.pc_decoder = torch.nn.Sequential(self.prior_model.module.fc_de,
                                               self.prior_model.module.decoder)
-        self.pc_decoder = self.model_util.set_model_device(self.pc_decoder)
-        self.pc_decoder = self.model_util.set_model_parallel_gpu(self.pc_decoder)
+        # self.pc_decoder = self.model_util.set_model_device(self.pc_decoder)
+        # self.pc_decoder = self.model_util.set_model_parallel_gpu(self.pc_decoder)
         self.pc_decoder = self.model_util.freeze_model(self.model_util.set_model_parallel_gpu(self.pc_decoder))
         '''NICE
         '''
@@ -181,7 +181,7 @@ class ImgNICEValidSession(Network):
                             mid_dim=config.nice.mid_dim, hidden=self.hidden, mask_config=config.nice.mask_config)
         self.pc_flow = self.model_util.set_model_device(self.pc_flow)
         self.pc_flow = self.model_util.set_model_parallel_gpu(self.pc_flow)
-        self.pc_flow = self.model_util.load_trained_model(self.pc_flow, config.nice.nice_epoch)
+        self.pc_flow = self.model_util.load_trained_model(self.pc_flow, config.network.nice_epoch)
 
     def log_epoch_loss(self):
         self.avg_epoch_cd_loss /= self.data_length

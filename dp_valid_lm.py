@@ -82,7 +82,7 @@ class LMValidSession(Network):
 
         self.avg_epoch_l1_loss = .0
         self.avg_epoch_cd_loss = .0
-        self.avg_epoch_emd_loss = .0
+        # self.avg_epoch_emd_loss = .0
         self.data_length = 0
         self.prior_model = None
         self.pc_decoder = None
@@ -112,16 +112,16 @@ class LMValidSession(Network):
 
                     re_imgs = self.pc_decoder(latent_img)
                     cd_loss = chamfer_distance_loss(re_imgs, targets)
-                    _emd_loss = emd_loss(re_imgs, targets)
+                    # _emd_loss = emd_loss(re_imgs, targets)
                     self.avg_epoch_l1_loss += (l1_loss.item() * len(inputs_pc))
                     self.avg_epoch_cd_loss += (cd_loss.item() * len(inputs_pc))
-                    self.avg_epoch_emd_loss += (_emd_loss.item() * len(inputs_pc))
+                    # self.avg_epoch_emd_loss += (_emd_loss.item() * len(inputs_pc))
 
             logging.info('Epoch %d, %d Step' % (self._epoch, final_step))
             self.log_epoch_loss()
             self.avg_epoch_l1_loss = .0
             self.avg_epoch_cd_loss = .0
-            self.avg_epoch_emd_loss = .0
+            # self.avg_epoch_emd_loss = .0
             self.data_length = 0
 
     def set_model(self):
@@ -138,14 +138,14 @@ class LMValidSession(Network):
         '''
         self.pc_decoder = torch.nn.Sequential(self.prior_model.module.fc_de,
                                               self.prior_model.module.decoder)
-        self.pc_decoder = self.model_util.set_model_device(self.pc_decoder)
-        self.pc_decoder = self.model_util.set_model_parallel_gpu(self.pc_decoder)
+        # self.pc_decoder = self.model_util.set_model_device(self.pc_decoder)
+        # self.pc_decoder = self.model_util.set_model_parallel_gpu(self.pc_decoder)
         self.pc_decoder = self.model_util.freeze_model(self.model_util.set_model_parallel_gpu(self.pc_decoder))
 
     def log_epoch_loss(self):
         self.avg_epoch_l1_loss /= self.data_length
         self.avg_epoch_cd_loss /= self.data_length
-        self.avg_epoch_emd_loss /= self.data_length
+        # self.avg_epoch_emd_loss /= self.data_length
 
         logging.info('Logging Epoch Loss...')
         if config.wandb.visual_flag:
@@ -153,8 +153,8 @@ class LMValidSession(Network):
                                            valid_epoch_loss=self.avg_epoch_l1_loss)
             self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='cd',
                                            valid_epoch_loss=self.avg_epoch_cd_loss)
-            self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='emd',
-                                           valid_epoch_loss=self.avg_epoch_emd_loss)
+            # self.visualizer.log_epoch_loss(epoch_idx=self._epoch, loss_name='emd',
+            #                                valid_epoch_loss=self.avg_epoch_emd_loss)
 
 
 def validLM():
