@@ -4,9 +4,9 @@
 train_class_list="chair"
 dataset_size="130128/32544/32544"
 
-CUDA_VISIBLE_DEVICES=1,2 \
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
 python dp_valid_lm.py \
---gpu_usage 2 \
+--gpu_usage 4 \
 --dataparallel_mode "Dataparallel" \
 --dataset_name "LMNet_ShapeNet_PC" \
 --dataset_size "$dataset_size" \
